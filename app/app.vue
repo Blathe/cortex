@@ -63,15 +63,24 @@ const navigationItems = computed(() => {
     },
     {
       label: 'Config',
-      to: '/config',
       icon: 'i-lucide-sliders-horizontal',
-      active: isActiveRoute('/config')
+      active: isActiveRoute('/config'),
+      defaultOpen: isActiveRoute('/config'),
+      children: [
+        { label: 'Agent', to: '/config', icon: 'i-lucide-bot', active: route.path === '/config' },
+        { label: 'Sources', to: '/config/sources', icon: 'i-lucide-database', active: route.path === '/config/sources' }
+      ]
     },
     {
       label: 'Jobs',
-      to: '/jobs',
       icon: 'i-lucide-workflow',
-      active: isActiveRoute('/jobs')
+      active: isActiveRoute('/jobs'),
+      defaultOpen: isActiveRoute('/jobs'),
+      children: [
+        { label: 'Dashboard', to: '/jobs', icon: 'i-lucide-layout-dashboard', active: route.path === '/jobs' },
+        { label: 'Logs', to: '/jobs/logs', icon: 'i-lucide-scroll-text', active: route.path === '/jobs/logs' },
+        { label: 'Crons', to: '/jobs/crons', icon: 'i-lucide-clock', active: route.path === '/jobs/crons' }
+      ]
     }
   ]]
 })
@@ -122,13 +131,11 @@ const navigationItems = computed(() => {
 
         <template #footer="{ collapsed }">
           <div class="flex items-center justify-between gap-2">
-            <UColorModeButton />
-
             <span
               v-if="!collapsed"
               class="text-xs text-muted"
             >
-              Cortex v1
+              Cortex Dashboard - v0.1
             </span>
           </div>
         </template>

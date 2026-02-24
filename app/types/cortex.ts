@@ -19,7 +19,6 @@ export interface CortexConfig {
   model: string
   baseUrl: string
   apiKey: string
-  systemPrompt: string
   updatedAt: string
 }
 

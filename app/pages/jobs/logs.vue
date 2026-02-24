@@ -54,6 +54,11 @@ const sortedLogs = computed(() => {
 
 <template>
   <UContainer class="py-6">
+    <PageHeader
+      title="Logs"
+      description="A stream of log output from all agent jobs, sorted newest first."
+    />
+
     <UCard>
       <UTable
         :data="sortedLogs"

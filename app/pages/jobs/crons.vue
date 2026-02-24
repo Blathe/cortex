@@ -65,6 +65,11 @@ const columns: TableColumn<CortexCron>[] = [
 
 <template>
   <UContainer class="py-6">
+    <PageHeader
+      title="Crons"
+      description="Scheduled jobs and their run history."
+    />
+
     <UCard>
       <UTable
         :data="crons"

@@ -83,6 +83,11 @@ const columns: TableColumn<CortexJob>[] = [
 
 <template>
   <UContainer class="py-6">
+    <PageHeader
+      title="Jobs"
+      description="Monitor active and historical agent jobs."
+    />
+
     <!-- Stats row -->
     <div class="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
       <UCard>

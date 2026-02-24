@@ -8,7 +8,6 @@ export const getDefaultCortexConfig = (): CortexConfig => {
     model: 'gpt-4o-mini',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
-    systemPrompt: 'You are Cortex, an autonomous agent that helps execute developer tasks.',
     updatedAt: new Date().toISOString()
   }
 }
@@ -26,7 +25,6 @@ const sanitizeConfig = (value: unknown): CortexConfig => {
     model: typeof maybeConfig.model === 'string' ? maybeConfig.model : defaults.model,
     baseUrl: typeof maybeConfig.baseUrl === 'string' ? maybeConfig.baseUrl : defaults.baseUrl,
     apiKey: typeof maybeConfig.apiKey === 'string' ? maybeConfig.apiKey : defaults.apiKey,
-    systemPrompt: typeof maybeConfig.systemPrompt === 'string' ? maybeConfig.systemPrompt : defaults.systemPrompt,
     updatedAt: typeof maybeConfig.updatedAt === 'string' ? maybeConfig.updatedAt : defaults.updatedAt
   }
 }

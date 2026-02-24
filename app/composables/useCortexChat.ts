@@ -194,8 +194,7 @@ export const useCortexChat = () => {
           provider: activeConfig.provider,
           model: activeConfig.model,
           baseUrl: activeConfig.baseUrl,
-          apiKey: activeConfig.apiKey,
-          systemPrompt: activeConfig.systemPrompt
+          apiKey: activeConfig.apiKey
         }
       })
 
@@ -228,7 +227,6 @@ export const useCortexChat = () => {
             body: {
               model: activeConfig.model,
               messages: [
-                { role: 'system', content: activeConfig.systemPrompt },
                 { role: 'user', content: promptText }
               ]
             }

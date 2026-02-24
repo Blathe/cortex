@@ -123,7 +123,7 @@ onMounted(() => {
         <UChatMessages
           :messages="chatMessages"
           :status="status"
-          :assistant="{ avatar: { src: '/cortex_avatar.png' }, variant: 'outline' }"
+          :assistant="{ avatar: { src: '/cortex_avatar.png', size: '3xl' }, variant: 'outline' }"
           :spacing-offset="176"
           should-auto-scroll
         />

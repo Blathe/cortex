@@ -6,7 +6,6 @@ interface ChatRequestBody {
   model?: string
   baseUrl?: string
   apiKey?: string
-  systemPrompt?: string
 }
 
 interface OpenAIChatCompletionResponse {
@@ -49,7 +48,8 @@ export default defineEventHandler(async (event) => {
   const model = body.model?.trim()
   const baseUrl = (body.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '')
   const apiKey = body.apiKey?.trim()
-  const systemPrompt = body.systemPrompt?.trim() || 'You are Cortex, an autonomous AI assistant.'
+  // TODO: load system prompt from agent/prompts/ markdown file
+  const systemPrompt = 'You are Cortex, an autonomous AI assistant.'
 
   if (!prompt) {
     throw createError({ statusCode: 400, statusMessage: 'Prompt is required.' })
