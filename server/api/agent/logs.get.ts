@@ -1,6 +1,6 @@
 import { defineEventHandler } from 'h3'
-import { readdirSync, readFileSync } from 'fs'
-import { resolve } from 'path'
+import { readdir, readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import type { AgentChangeLog } from '~/types/cortex'
 
 function parseLog(filename: string, content: string): AgentChangeLog {
@@ -26,19 +26,22 @@ function parseLog(filename: string, content: string): AgentChangeLog {
   return { filename, timestamp, changedBy, patch, reason }
 }
 
-export default defineEventHandler(() => {
+export default defineEventHandler(async () => {
   const logsDir = resolve(process.cwd(), 'agent/logs')
   let files: string[]
   try {
-    files = readdirSync(logsDir).filter(f => f.endsWith('.md'))
+    const entries = await readdir(logsDir)
+    files = entries.filter(f => f.endsWith('.md'))
   } catch {
     return { logs: [] as AgentChangeLog[] }
   }
 
-  const logs = files.map((filename) => {
-    const content = readFileSync(resolve(logsDir, filename), 'utf-8')
-    return parseLog(filename, content)
-  })
+  const logs = await Promise.all(
+    files.map(async (filename) => {
+      const content = await readFile(resolve(logsDir, filename), 'utf-8')
+      return parseLog(filename, content)
+    })
+  )
 
   logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 

@@ -33,9 +33,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: validationError })
   }
 
-  const prev = readSettings()
-  const next = writeSettings(patch, source)
-  const logFile = createChangeLog(prev, next, source, reason, sessionId, patch)
+  const prev = await readSettings()
+  const next = await writeSettings(patch, source)
+  const logFile = await createChangeLog(prev, next, source, reason, sessionId, patch)
 
   if (!next.git.autoPush) {
     return { settings: next, logFile }

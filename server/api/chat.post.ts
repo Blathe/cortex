@@ -143,7 +143,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'API key is required.' })
   }
 
-  const settings = readSettings()
+  const settings = await readSettings()
   const rawPrompt = readFileSync(resolve(process.cwd(), 'agent/prompts/SYSTEM_PROMPT.md'), 'utf-8').trim()
   const systemPrompt = `[tone: ${settings.persona.tone}, verbosity: ${settings.persona.verbosity}]\n\n${rawPrompt}`
 

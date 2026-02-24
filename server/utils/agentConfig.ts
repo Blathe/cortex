@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
@@ -103,12 +103,9 @@ const PATCH_SCHEMA: Record<string, Record<string, FieldValidator>> = {
   }
 }
 
-export const readSettings = (): AgentSettings => {
+export const readSettings = async (): Promise<AgentSettings> => {
   try {
-    if (!existsSync(SETTINGS_PATH)) {
-      return { ...DEFAULT_SETTINGS }
-    }
-    const raw = readFileSync(SETTINGS_PATH, 'utf-8')
+    const raw = await readFile(SETTINGS_PATH, 'utf-8')
     return JSON.parse(raw) as AgentSettings
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -136,14 +133,14 @@ const deepMerge = (target: Record<string, unknown>, source: Record<string, unkno
   return result
 }
 
-export const writeSettings = (patch: Record<string, unknown>, source: 'user' | 'agent'): AgentSettings => {
-  const current = readSettings()
+export const writeSettings = async (patch: Record<string, unknown>, source: 'user' | 'agent'): Promise<AgentSettings> => {
+  const current = await readSettings()
   const merged = deepMerge(current as unknown as Record<string, unknown>, patch) as unknown as AgentSettings
   merged.meta = {
     updatedAt: new Date().toISOString(),
     updatedBy: source
   }
-  writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf-8')
+  await writeFile(SETTINGS_PATH, JSON.stringify(merged, null, 2) + '\n', 'utf-8')
   return merged
 }
 
@@ -202,17 +199,15 @@ const slugify = (text: string): string => {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40).replace(/-+$/, '')
 }
 
-export const createChangeLog = (
+export const createChangeLog = async (
   prev: AgentSettings,
   next: AgentSettings,
   source: 'user' | 'agent',
   reason: string,
   sessionId: string,
   patch: Record<string, unknown>
-): string => {
-  if (!existsSync(LOGS_DIR)) {
-    mkdirSync(LOGS_DIR, { recursive: true })
-  }
+): Promise<string> => {
+  await mkdir(LOGS_DIR, { recursive: true })
 
   const now = new Date()
   const datePart = now.toISOString().replace('T', ' ').slice(0, 19)
@@ -251,7 +246,7 @@ export const createChangeLog = (
     ''
   ].join('\n')
 
-  writeFileSync(filePath, content, 'utf-8')
+  await writeFile(filePath, content, 'utf-8')
   return filePath
 }
 
@@ -271,8 +266,8 @@ export const commitToBranch = async (branch: string, files: string[], message: s
     for (const file of files) {
       const rel = relative(cwd, file)
       const dest = resolve(worktreePath, rel)
-      mkdirSync(dirname(dest), { recursive: true })
-      copyFileSync(file, dest)
+      await mkdir(dirname(dest), { recursive: true })
+      await copyFile(file, dest)
     }
 
     // Commit and push from within the isolated worktree
