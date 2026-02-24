@@ -21,6 +21,8 @@ const providerForm = reactive({
 const tokenMode = ref<'generate' | 'paste'>('generate')
 const pastedToken = ref('')
 const generatedToken = ref('')
+const setupSecret = ref('')
+const needsSetupSecret = ref(false)
 
 // Step 3 — GitHub
 const githubForm = reactive({
@@ -60,15 +62,25 @@ const handleGenerateToken = async () => {
   isLoading.value = true
   error.value = null
   try {
+    const headers: Record<string, string> = { ...authHeaders.value }
+    if (setupSecret.value.trim()) {
+      headers['x-cortex-setup-secret'] = setupSecret.value.trim()
+    }
     const res = await $fetch<{ token: string }>('/api/agent/auth/generate', {
       method: 'POST',
-      headers: authHeaders.value
+      headers
     })
     // Server sets an HttpOnly cookie — display the token here for CLI/API backup only.
     generatedToken.value = res.token
+    needsSetupSecret.value = false
   } catch (e) {
-    const err = e as { statusMessage?: string }
-    error.value = err.statusMessage ?? 'Failed to generate token.'
+    const err = e as { statusCode?: number, statusMessage?: string }
+    if (err.statusCode === 403) {
+      needsSetupSecret.value = true
+      error.value = 'A setup secret is required. Enter the value of CORTEX_SETUP_SECRET from your server environment.'
+    } else {
+      error.value = err.statusMessage ?? 'Failed to generate token.'
+    }
   } finally {
     isLoading.value = false
   }
@@ -295,6 +307,22 @@ const goBack = () => {
             </p>
 
             <div v-if="tokenMode === 'generate'">
+              <div
+                v-if="needsSetupSecret"
+                class="mb-4"
+              >
+                <UFormField
+                  label="Setup Secret"
+                  description="Enter the CORTEX_SETUP_SECRET value configured on the server."
+                >
+                  <UInput
+                    v-model="setupSecret"
+                    type="password"
+                    placeholder="Setup secret"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
               <UButton
                 :loading="isLoading"
                 icon="i-lucide-refresh-cw"
