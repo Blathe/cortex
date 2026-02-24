@@ -2,7 +2,7 @@
   "version": 1,
   "persona": {
     "name": "Cortex",
-    "tone": "professional",
+    "tone": "casual",
     "verbosity": "low"
   },
   "reasoning": {
@@ -14,7 +14,7 @@
     "autoMerge": true
   },
   "meta": {
-    "updatedAt": "2026-02-24T07:43:47.926Z",
-    "updatedBy": "agent"
+    "updatedAt": "2026-02-24T08:11:28.238Z",
+    "updatedBy": "user"
   }
 }
