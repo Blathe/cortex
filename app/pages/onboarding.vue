@@ -100,6 +100,7 @@ const goNext = async () => {
     } else if (currentStep.value === 4) {
       await $fetch('/api/agent/config', {
         method: 'POST',
+        headers: authHeaders.value,
         body: {
           patch: {
             persona: {
@@ -130,6 +131,7 @@ const goNext = async () => {
 const finishOnboarding = async () => {
   await $fetch('/api/agent/config', {
     method: 'POST',
+    headers: authHeaders.value,
     body: {
       patch: { meta: { onboarded: true } },
       reason: 'Onboarding complete',
@@ -289,24 +291,9 @@ const goBack = () => {
               API Token
             </h2>
             <p class="mb-4 text-sm text-muted">
-              Cortex uses a bearer token to secure its API. Generate one automatically or paste an existing token.
+              Cortex uses a bearer token to secure its API. Generate one now.
             </p>
-            <div class="mb-6 flex gap-2">
-              <UButton
-                :variant="tokenMode === 'generate' ? 'solid' : 'outline'"
-                size="sm"
-                @click="tokenMode = 'generate'"
-              >
-                Generate
-              </UButton>
-              <UButton
-                :variant="tokenMode === 'paste' ? 'solid' : 'outline'"
-                size="sm"
-                @click="tokenMode = 'paste'"
-              >
-                Paste existing
-              </UButton>
-            </div>
+
             <div v-if="tokenMode === 'generate'">
               <UButton
                 :loading="isLoading"
@@ -353,9 +340,18 @@ const goBack = () => {
               description="These values are written to .env on the server, which is gitignored and never committed."
               class="mb-6"
             />
+            <UAlert
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-shield-check"
+              title="Ensure your repo is private!"
+              description="Your bot's repo should never be exposed to the public."
+              class="mb-6"
+            />
             <div class="space-y-4">
               <UFormField
                 label="Repository"
+                description="The repository for this specific bot you are setting up."
                 hint="owner/repo format"
               >
                 <UInput
