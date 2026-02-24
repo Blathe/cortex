@@ -26,6 +26,26 @@ interface AgentConfigProposalRaw {
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
 
+const ALLOWED_HOSTS = new Set([
+  'api.openai.com'
+])
+
+const validateBaseUrl = (raw: string): string => {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    throw createError({ statusCode: 400, statusMessage: 'Invalid base URL.' })
+  }
+  if (url.protocol !== 'https:') {
+    throw createError({ statusCode: 400, statusMessage: 'Base URL must use HTTPS.' })
+  }
+  if (!ALLOWED_HOSTS.has(url.hostname)) {
+    throw createError({ statusCode: 400, statusMessage: `Base URL host "${url.hostname}" is not permitted.` })
+  }
+  return raw.replace(/\/$/, '')
+}
+
 type OpenAIMessageContent = string | Array<{ type?: string, text?: string }> | undefined
 
 const normalizeProvider = (provider?: string) => {
@@ -104,7 +124,7 @@ export default defineEventHandler(async (event) => {
   const prompt = body.prompt?.trim()
   const provider = normalizeProvider(body.provider)
   const model = body.model?.trim()
-  const baseUrl = (body.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '')
+  const baseUrl = validateBaseUrl(body.baseUrl?.trim() || DEFAULT_BASE_URL)
   const apiKey = body.apiKey?.trim()
 
   if (!prompt) {
