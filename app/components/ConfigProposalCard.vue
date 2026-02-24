@@ -11,6 +11,7 @@ const emit = defineEmits<{
 }>()
 
 const toast = useToast()
+const { authHeaders } = useCortexAuth()
 const isPending = ref(false)
 
 const riskColor = computed(() => props.proposal.riskLevel === 'low' ? 'success' : 'warning')
@@ -36,6 +37,7 @@ const confirm = async () => {
   try {
     await $fetch('/api/agent/config', {
       method: 'POST',
+      headers: authHeaders.value,
       body: {
         patch: props.proposal.patch,
         reason: props.proposal.reason,
