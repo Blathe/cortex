@@ -8,8 +8,8 @@ export default defineEventHandler((event) => {
   // Auth management endpoints are always accessible (token generation, login)
   if (event.path.startsWith('/api/agent/auth/')) return
 
-  // Config reads are not sensitive — needed for SSR middleware to check onboarding status
-  if (event.path === '/api/agent/config' && event.method === 'GET') return
+  // Minimal onboarding check is intentionally public — returns only a boolean
+  if (event.path === '/api/agent/onboarding-status') return
 
   // No token configured — auth is not enabled, allow all requests through
   const stored = readToken()

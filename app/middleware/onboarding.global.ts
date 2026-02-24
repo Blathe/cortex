@@ -7,8 +7,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const onboarded = useState<boolean | null>('onboarded', () => null)
 
   if (onboarded.value === null) {
-    const data = await $fetch<{ settings: { meta: { onboarded?: boolean } } }>('/api/agent/config').catch(() => null)
-    onboarded.value = data?.settings?.meta?.onboarded ?? false
+    const data = await $fetch<{ onboarded: boolean }>('/api/agent/onboarding-status').catch(() => null)
+    onboarded.value = data?.onboarded ?? false
   }
 
   if (!onboarded.value) {
