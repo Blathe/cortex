@@ -9,20 +9,20 @@ const isDone = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// Step 1 — LLM Provider
+// Step 1 — API Token
+const tokenMode = ref<'generate' | 'paste'>('generate')
+const pastedToken = ref('')
+const generatedToken = ref('')
+const setupSecret = ref('')
+const needsSetupSecret = ref(false)
+
+// Step 2 — LLM Provider
 const providerForm = reactive({
   name: 'OpenAI',
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   model: 'gpt-4o'
 })
-
-// Step 2 — API Token
-const tokenMode = ref<'generate' | 'paste'>('generate')
-const pastedToken = ref('')
-const generatedToken = ref('')
-const setupSecret = ref('')
-const needsSetupSecret = ref(false)
 
 // Step 3 — GitHub
 const githubForm = reactive({
@@ -39,8 +39,8 @@ const personaForm = reactive({
 
 const steps = ref<StepperItem[]>([
   { title: 'Welcome', description: 'Introduction', icon: 'i-lucide-sparkles' },
-  { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
   { title: 'API Token', description: 'Secure access token', icon: 'i-lucide-key' },
+  { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
   { title: 'GitHub', description: 'Repository credentials', icon: 'i-lucide-github' },
   { title: 'Persona', description: 'Agent behavior', icon: 'i-lucide-bot' }
 ])
@@ -91,6 +91,10 @@ const goNext = async () => {
   isLoading.value = true
   try {
     if (currentStep.value === 1) {
+      if (tokenMode.value === 'paste' && pastedToken.value.trim()) {
+        await saveToken(pastedToken.value.trim())
+      }
+    } else if (currentStep.value === 2) {
       const id = await addProvider({
         name: providerForm.name,
         baseUrl: providerForm.baseUrl,
@@ -98,10 +102,6 @@ const goNext = async () => {
         models: [providerForm.model]
       })
       await setActive(id)
-    } else if (currentStep.value === 2) {
-      if (tokenMode.value === 'paste' && pastedToken.value.trim()) {
-        await saveToken(pastedToken.value.trim())
-      }
     } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
@@ -227,17 +227,17 @@ const goBack = () => {
             <ul class="mb-6 space-y-3 text-sm text-default">
               <li class="flex items-center gap-2">
                 <UIcon
-                  name="i-lucide-plug"
-                  class="size-4 shrink-0 text-primary"
-                />
-                Connecting an LLM provider
-              </li>
-              <li class="flex items-center gap-2">
-                <UIcon
                   name="i-lucide-key"
                   class="size-4 shrink-0 text-primary"
                 />
                 Setting up a secure API token
+              </li>
+              <li class="flex items-center gap-2">
+                <UIcon
+                  name="i-lucide-plug"
+                  class="size-4 shrink-0 text-primary"
+                />
+                Connecting an LLM provider
               </li>
               <li class="flex items-center gap-2">
                 <UIcon
@@ -256,49 +256,8 @@ const goBack = () => {
             </ul>
           </div>
 
-          <!-- Step 1: LLM Provider -->
+          <!-- Step 1: API Token -->
           <div v-else-if="currentStep === 1">
-            <h2 class="mb-2 text-xl font-semibold text-highlighted">
-              LLM Provider
-            </h2>
-            <p class="mb-6 text-sm text-muted">
-              Configure the AI model Cortex will use for chat.
-            </p>
-            <div class="space-y-4">
-              <UFormField label="Provider Name">
-                <UInput
-                  v-model="providerForm.name"
-                  placeholder="e.g. OpenAI"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Base URL">
-                <UInput
-                  v-model="providerForm.baseUrl"
-                  placeholder="https://api.openai.com/v1"
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="API Key">
-                <UInput
-                  v-model="providerForm.apiKey"
-                  type="password"
-                  placeholder="sk-..."
-                  class="w-full"
-                />
-              </UFormField>
-              <UFormField label="Default Model">
-                <UInput
-                  v-model="providerForm.model"
-                  placeholder="gpt-4o"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-          </div>
-
-          <!-- Step 2: API Token -->
-          <div v-else-if="currentStep === 2">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               API Token
             </h2>
@@ -346,6 +305,47 @@ const goBack = () => {
                   v-model="pastedToken"
                   type="password"
                   placeholder="Paste your token here"
+                  class="w-full"
+                />
+              </UFormField>
+            </div>
+          </div>
+
+          <!-- Step 2: LLM Provider -->
+          <div v-else-if="currentStep === 2">
+            <h2 class="mb-2 text-xl font-semibold text-highlighted">
+              LLM Provider
+            </h2>
+            <p class="mb-6 text-sm text-muted">
+              Configure the AI model Cortex will use for chat.
+            </p>
+            <div class="space-y-4">
+              <UFormField label="Provider Name">
+                <UInput
+                  v-model="providerForm.name"
+                  placeholder="e.g. OpenAI"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Base URL">
+                <UInput
+                  v-model="providerForm.baseUrl"
+                  placeholder="https://api.openai.com/v1"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="API Key">
+                <UInput
+                  v-model="providerForm.apiKey"
+                  type="password"
+                  placeholder="sk-..."
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField label="Default Model">
+                <UInput
+                  v-model="providerForm.model"
+                  placeholder="gpt-4o"
                   class="w-full"
                 />
               </UFormField>
