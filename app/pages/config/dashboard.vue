@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DashboardPrefs } from '~/types/cortex'
 
-const { save, loadAndApply } = useCortexDashboard()
+const { load, apply, save } = useCortexDashboard()
 const colorMode = useColorMode()
 const toast = useToast()
 
@@ -10,6 +10,18 @@ const state = reactive<DashboardPrefs>({
   timezone: 'UTC',
   dateFormat: 'absolute'
 })
+
+const savedPrefs = ref<DashboardPrefs>({
+  primaryColor: 'green',
+  timezone: 'UTC',
+  dateFormat: 'absolute'
+})
+
+const isDirty = computed(() =>
+  state.primaryColor !== savedPrefs.value.primaryColor
+  || state.timezone !== savedPrefs.value.timezone
+  || state.dateFormat !== savedPrefs.value.dateFormat
+)
 
 const colorOptions = [
   { label: 'Green', value: 'green', hex: '#22c55e' },
@@ -80,7 +92,8 @@ const previewDate = computed(() => {
 })
 
 const onSave = () => {
-  save({ ...state })
+  const saved = save({ ...state })
+  savedPrefs.value = { ...saved }
   toast.add({ title: 'Dashboard preferences saved', color: 'success' })
 }
 
@@ -91,7 +104,10 @@ const syncFromPrefs = (p: DashboardPrefs) => {
 }
 
 onMounted(() => {
-  const loaded = loadAndApply()
+  // app.vue already applied the saved color for the session;
+  // here we just sync the form and record what's saved for dirty tracking
+  const loaded = load()
+  savedPrefs.value = { ...loaded }
   syncFromPrefs(loaded)
   ticker = setInterval(() => {
     now.value = new Date()
@@ -159,7 +175,7 @@ onUnmounted(() => clearInterval(ticker))
                     :style="{ 'backgroundColor': color.hex, '--tw-ring-color': color.hex }"
                     :aria-label="color.label"
                     :title="color.label"
-                    @click="state.primaryColor = color.value"
+                    @click="() => { state.primaryColor = color.value; apply({ ...state }) }"
                   >
                     <UIcon
                       v-if="state.primaryColor === color.value"
@@ -218,7 +234,10 @@ onUnmounted(() => clearInterval(ticker))
           </UCard>
 
           <div class="flex justify-end">
-            <UButton @click="onSave">
+            <UButton
+              :disabled="!isDirty"
+              @click="onSave"
+            >
               Save preferences
             </UButton>
           </div>

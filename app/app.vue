@@ -1,4 +1,7 @@
 <script setup lang="ts">
+const { loadAndApply } = useCortexDashboard()
+onMounted(() => loadAndApply())
+
 useHead({
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' }
