@@ -2,7 +2,7 @@
   "version": 1,
   "persona": {
     "name": "Cortex",
-    "tone": "casual",
+    "tone": "verbose",
     "verbosity": "low"
   },
   "reasoning": {
@@ -15,7 +15,7 @@
   },
   "meta": {
     "onboarded": true,
-    "updatedAt": "2026-02-24T18:24:53.765Z",
-    "updatedBy": "user"
+    "updatedAt": "2026-02-24T21:15:11.470Z",
+    "updatedBy": "agent"
   }
 }
