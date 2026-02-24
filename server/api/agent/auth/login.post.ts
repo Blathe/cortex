@@ -1,5 +1,6 @@
-import { createError, defineEventHandler, readBody, setCookie } from 'h3'
+import { createError, defineEventHandler, readBody } from 'h3'
 import { readToken } from '../../../utils/authToken'
+import { setSessionCookie } from '../../../utils/authSession'
 import { enforceRateLimit, safeStringEqual } from '../../../utils/security'
 
 export default defineEventHandler(async (event) => {
@@ -20,13 +21,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'Invalid token.' })
   }
 
-  setCookie(event, 'cortex_auth', stored, {
-    httpOnly: true,
-    sameSite: 'strict',
-    path: '/',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 365
-  })
+  setSessionCookie(event, stored)
 
-  return { ok: true }
+  return { ok: true, sessionEstablished: true }
 })

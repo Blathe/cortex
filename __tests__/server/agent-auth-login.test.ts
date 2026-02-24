@@ -48,6 +48,12 @@ describe('POST /api/agent/auth/login', () => {
     const handle = makeApp()
     const res = await post(handle, { token: 'server-token' })
     expect(res.status).toBe(200)
-    expect(res.headers.get('set-cookie')).toContain('cortex_auth=')
+    const setCookie = res.headers.get('set-cookie') || ''
+    expect(setCookie).toContain('cortex_auth=')
+    expect(setCookie).not.toContain('server-token')
+
+    const body = await res.json() as { ok: boolean, sessionEstablished: boolean }
+    expect(body.ok).toBe(true)
+    expect(body.sessionEstablished).toBe(true)
   })
 })

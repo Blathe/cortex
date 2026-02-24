@@ -1,10 +1,17 @@
-import { createError, defineEventHandler, getCookie, getHeader, setCookie } from 'h3'
+import { createError, defineEventHandler, getCookie, getHeader, readBody } from 'h3'
 import { generateToken, readToken, writeToken } from '../../../utils/authToken'
+import { setSessionCookie, validateSessionCookieValue } from '../../../utils/authSession'
 import { enforceRateLimit, safeStringEqual } from '../../../utils/security'
 
-export default defineEventHandler((event) => {
+interface GeneratePostBody {
+  revealToken?: unknown
+}
+
+export default defineEventHandler(async (event) => {
   enforceRateLimit(event, { key: 'agent-auth-generate', maxAttempts: 20, windowMs: 60_000 })
 
+  const body: GeneratePostBody = await readBody<GeneratePostBody>(event)
+    .catch(() => ({}) as GeneratePostBody)
   const existing = readToken()
   const setupSecret = process.env.CORTEX_SETUP_SECRET
   const providedSetupSecret = getHeader(event, 'x-cortex-setup-secret')
@@ -20,10 +27,12 @@ export default defineEventHandler((event) => {
 
   if (existing !== null) {
     // Token exists — require current credentials to rotate (prevent unauthenticated rotation).
-    // Accept either a Bearer header (CLI) or the HttpOnly cookie (browser).
+    // Accept either a Bearer header (CLI) or a valid signed session cookie (browser).
     const header = getHeader(event, 'authorization')
     const cookie = getCookie(event, 'cortex_auth')
-    if (header !== `Bearer ${existing}` && cookie !== existing) {
+    const hasBearerAuth = header === `Bearer ${existing}`
+    const hasValidSession = validateSessionCookieValue(cookie, existing).valid
+    if (!hasBearerAuth && !hasValidSession) {
       throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
     }
   } else {
@@ -41,15 +50,18 @@ export default defineEventHandler((event) => {
   const token = generateToken()
   writeToken(token)
 
-  setCookie(event, 'cortex_auth', token, {
-    httpOnly: true,
-    sameSite: 'strict',
-    path: '/',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 365
-  })
+  setSessionCookie(event, token)
 
-  // Still return the token so the user can copy it for programmatic/CLI use.
-  // It is NOT stored client-side; the HttpOnly cookie handles browser auth.
-  return { token }
+  const revealToken = body?.revealToken === true
+  if (revealToken) {
+    return {
+      sessionEstablished: true,
+      token
+    }
+  }
+
+  return {
+    sessionEstablished: true,
+    tokenRevealed: false
+  }
 })

@@ -1,6 +1,7 @@
 import { createApp, createRouter, toWebHandler } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateToken, readToken, writeToken } from '../../server/utils/authToken'
+import { createSessionCookieValue } from '../../server/utils/authSession'
 import generateHandler from '../../server/api/agent/auth/generate.post'
 
 vi.mock('../../server/utils/authToken')
@@ -15,11 +16,20 @@ const makeApp = () => {
 
 const post = (
   handler: ReturnType<typeof toWebHandler>,
-  headers: Record<string, string> = {}
+  options: {
+    headers?: Record<string, string>
+    body?: unknown
+  } = {}
 ) =>
   handler(new Request('http://localhost/generate', {
     method: 'POST',
-    headers
+    headers: options.headers,
+    ...(options.body !== undefined
+      ? {
+          body: JSON.stringify(options.body),
+          headers: { ...(options.headers ?? {}), 'content-type': 'application/json' }
+        }
+      : {})
   }))
 
 describe('POST /api/agent/auth/generate — bootstrap (no existing token)', () => {
@@ -36,10 +46,18 @@ describe('POST /api/agent/auth/generate — bootstrap (no existing token)', () =
     expect(res.status).toBe(200)
   })
 
-  it('returns the generated token in the response body', async () => {
+  it('does not reveal token by default', async () => {
     const handle = makeApp()
     const res = await post(handle)
-    const body = await res.json() as { token: string }
+    const body = await res.json() as { token?: string, tokenRevealed?: boolean }
+    expect(body.token).toBeUndefined()
+    expect(body.tokenRevealed).toBe(false)
+  })
+
+  it('returns the generated token only when revealToken=true', async () => {
+    const handle = makeApp()
+    const res = await post(handle, { body: { revealToken: true } })
+    const body = await res.json() as { token?: string }
     expect(body.token).toBe('new-token-hex')
   })
 
@@ -47,6 +65,14 @@ describe('POST /api/agent/auth/generate — bootstrap (no existing token)', () =
     const handle = makeApp()
     await post(handle)
     expect(writeToken).toHaveBeenCalledWith('new-token-hex')
+  })
+
+  it('sets a signed session cookie instead of exposing raw token in cookie value', async () => {
+    const handle = makeApp()
+    const res = await post(handle)
+    const setCookie = res.headers.get('set-cookie') || ''
+    expect(setCookie).toContain('cortex_auth=')
+    expect(setCookie).not.toContain('new-token-hex')
   })
 
   it('blocks bootstrap when CORTEX_SETUP_SECRET is set and header is missing', async () => {
@@ -59,14 +85,14 @@ describe('POST /api/agent/auth/generate — bootstrap (no existing token)', () =
   it('blocks bootstrap when CORTEX_SETUP_SECRET is set and header is wrong', async () => {
     process.env.CORTEX_SETUP_SECRET = 'my-super-secret'
     const handle = makeApp()
-    const res = await post(handle, { 'x-cortex-setup-secret': 'wrong-value' })
+    const res = await post(handle, { headers: { 'x-cortex-setup-secret': 'wrong-value' } })
     expect(res.status).toBe(403)
   })
 
   it('allows bootstrap when CORTEX_SETUP_SECRET is set and header matches', async () => {
     process.env.CORTEX_SETUP_SECRET = 'my-super-secret'
     const handle = makeApp()
-    const res = await post(handle, { 'x-cortex-setup-secret': 'my-super-secret' })
+    const res = await post(handle, { headers: { 'x-cortex-setup-secret': 'my-super-secret' } })
     expect(res.status).toBe(200)
   })
 })
@@ -87,19 +113,20 @@ describe('POST /api/agent/auth/generate — token rotation (existing token)', ()
 
   it('blocks rotation with wrong Bearer token', async () => {
     const handle = makeApp()
-    const res = await post(handle, { authorization: 'Bearer wrong-token' })
+    const res = await post(handle, { headers: { authorization: 'Bearer wrong-token' } })
     expect(res.status).toBe(401)
   })
 
   it('allows rotation with valid Bearer token', async () => {
     const handle = makeApp()
-    const res = await post(handle, { authorization: 'Bearer existing-token' })
+    const res = await post(handle, { headers: { authorization: 'Bearer existing-token' } })
     expect(res.status).toBe(200)
   })
 
   it('allows rotation with valid session cookie', async () => {
     const handle = makeApp()
-    const res = await post(handle, { cookie: 'cortex_auth=existing-token' })
+    const session = createSessionCookieValue('existing-token')
+    const res = await post(handle, { headers: { cookie: `cortex_auth=${session}` } })
     expect(res.status).toBe(200)
   })
 
@@ -107,8 +134,10 @@ describe('POST /api/agent/auth/generate — token rotation (existing token)', ()
     process.env.CORTEX_SETUP_SECRET = 'correct-secret'
     const handle = makeApp()
     const res = await post(handle, {
-      'authorization': 'Bearer existing-token',
-      'x-cortex-setup-secret': 'wrong-secret'
+      headers: {
+        'authorization': 'Bearer existing-token',
+        'x-cortex-setup-secret': 'wrong-secret'
+      }
     })
     expect(res.status).toBe(403)
   })
@@ -117,8 +146,10 @@ describe('POST /api/agent/auth/generate — token rotation (existing token)', ()
     process.env.CORTEX_SETUP_SECRET = 'correct-secret'
     const handle = makeApp()
     const res = await post(handle, {
-      'authorization': 'Bearer existing-token',
-      'x-cortex-setup-secret': 'correct-secret'
+      headers: {
+        'authorization': 'Bearer existing-token',
+        'x-cortex-setup-secret': 'correct-secret'
+      }
     })
     expect(res.status).toBe(200)
   })
