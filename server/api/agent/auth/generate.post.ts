@@ -1,16 +1,10 @@
 import { createError, defineEventHandler, getCookie, getHeader, setCookie } from 'h3'
-import { createHash, timingSafeEqual } from 'node:crypto'
 import { generateToken, readToken, writeToken } from '../../../utils/authToken'
-
-// Hash both strings before comparing so timingSafeEqual always operates on equal-length buffers
-// regardless of input length, preventing timing attacks on the setup secret.
-const safeStringEqual = (a: string, b: string): boolean => {
-  const hashA = createHash('sha256').update(a).digest()
-  const hashB = createHash('sha256').update(b).digest()
-  return timingSafeEqual(hashA, hashB)
-}
+import { enforceRateLimit, safeStringEqual } from '../../../utils/security'
 
 export default defineEventHandler((event) => {
+  enforceRateLimit(event, { key: 'agent-auth-generate', maxAttempts: 20, windowMs: 60_000 })
+
   const existing = readToken()
   const setupSecret = process.env.CORTEX_SETUP_SECRET
   const providedSetupSecret = getHeader(event, 'x-cortex-setup-secret')

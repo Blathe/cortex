@@ -2,7 +2,7 @@
 import type { StepperItem } from '@nuxt/ui'
 
 const { addProvider, setActive } = useCortexProviders()
-const { saveToken, authHeaders } = useCortexAuth()
+const { saveToken } = useCortexAuth()
 
 const currentStep = ref<number>(0)
 const isDone = ref(false)
@@ -131,7 +131,7 @@ const restoreDraft = () => {
 
 const normalizeRestoredStep = async () => {
   if (currentStep.value <= 1) return
-  const authorized = await $fetch('/api/agent/providers', { headers: authHeaders.value })
+  const authorized = await $fetch('/api/agent/providers')
     .then(() => true)
     .catch(() => false)
   if (!authorized) {
@@ -181,31 +181,15 @@ const goNext = async () => {
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
       if (githubForm.ghToken.trim()) vars.push({ key: 'GH_TOKEN', value: githubForm.ghToken.trim() })
       if (vars.length) {
-        await $fetch('/api/agent/env', { method: 'POST', headers: authHeaders.value, body: { vars } })
+        await $fetch('/api/agent/env', { method: 'POST', body: { vars } })
       }
     } else if (currentStep.value === 4) {
-      await $fetch('/api/agent/config', {
-        method: 'POST',
-        headers: authHeaders.value,
-        body: {
-          patch: {
-            persona: {
-              name: personaForm.name,
-              tone: personaForm.tone,
-              verbosity: personaForm.verbosity
-            }
-          },
-          reason: 'Onboarding: agent persona configured',
-          source: 'user'
-        }
-      })
+      await finishOnboarding()
     }
 
     if (currentStep.value < 4) {
       currentStep.value += 1
       persistDraft()
-    } else {
-      await finishOnboarding()
     }
   } catch (e) {
     const err = e as { statusCode?: number, statusMessage?: string, message?: string }
@@ -224,9 +208,15 @@ const goNext = async () => {
 const finishOnboarding = async () => {
   await $fetch('/api/agent/config', {
     method: 'POST',
-    headers: authHeaders.value,
     body: {
-      patch: { meta: { onboarded: true } },
+      patch: {
+        persona: {
+          name: personaForm.name,
+          tone: personaForm.tone,
+          verbosity: personaForm.verbosity
+        },
+        meta: { onboarded: true }
+      },
       reason: 'Onboarding complete',
       source: 'user'
     }

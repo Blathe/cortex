@@ -22,12 +22,8 @@ export const useCortexProviders = () => {
   const providers = useState<CortexProvider[]>('cortex.providers', () => [])
   const activeProviderId = useState<string | null>('cortex.providers.active', () => null)
 
-  const { authHeaders } = useCortexAuth()
-
   const loadProviders = async () => {
-    const res = await $fetch<ProvidersGetResponse>('/api/agent/providers', {
-      headers: authHeaders.value
-    })
+    const res = await $fetch<ProvidersGetResponse>('/api/agent/providers')
     providers.value = res.providers
     activeProviderId.value = res.activeId
   }
@@ -35,7 +31,6 @@ export const useCortexProviders = () => {
   const addProvider = async (input: ProviderInput) => {
     const res = await $fetch<ProviderPostResponse>('/api/agent/providers', {
       method: 'POST',
-      headers: authHeaders.value,
       body: input
     })
     await loadProviders()
@@ -45,7 +40,6 @@ export const useCortexProviders = () => {
   const updateProvider = async (id: string, patch: Partial<ProviderInput>) => {
     await $fetch('/api/agent/providers', {
       method: 'POST',
-      headers: authHeaders.value,
       body: { id, ...patch }
     })
     await loadProviders()
@@ -53,8 +47,7 @@ export const useCortexProviders = () => {
 
   const deleteProvider = async (id: string) => {
     await $fetch(`/api/agent/providers/${id}`, {
-      method: 'DELETE',
-      headers: authHeaders.value
+      method: 'DELETE'
     })
     providers.value = providers.value.filter(p => p.id !== id)
     if (activeProviderId.value === id) {
@@ -68,7 +61,6 @@ export const useCortexProviders = () => {
 
     await $fetch('/api/agent/providers', {
       method: 'POST',
-      headers: authHeaders.value,
       body: { id, name: provider.name, baseUrl: provider.baseUrl, models: provider.models, setActive: true }
     })
 

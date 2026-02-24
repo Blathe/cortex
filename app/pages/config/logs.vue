@@ -3,10 +3,9 @@ import { h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import type { AgentChangeLog } from '~/types/cortex'
 
-const { authHeaders } = useCortexAuth()
 const { data: changeLogData, pending } = await useAsyncData(
   'agent-logs',
-  () => $fetch('/api/agent/logs', { headers: authHeaders.value }),
+  () => $fetch('/api/agent/logs'),
   { server: false }
 )
 const changeLogs = computed<AgentChangeLog[]>(() => changeLogData.value?.logs ?? [])

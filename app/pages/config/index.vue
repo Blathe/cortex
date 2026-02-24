@@ -4,7 +4,6 @@ import type { AgentSettings, CortexConfig } from '~/types/cortex'
 type ConfigFormState = Omit<CortexConfig, 'updatedAt'>
 
 const { config, loadConfig } = useCortexConfig()
-const { authHeaders } = useCortexAuth()
 const toast = useToast()
 
 // ── LLM runtime config ────────────────────────────────────────────────────────
@@ -38,10 +37,7 @@ const onGenerateToken = async () => {
   showRegenerateWarning.value = false
   newlyGeneratedToken.value = null
   try {
-    const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', {
-      method: 'POST',
-      headers: authHeaders.value
-    })
+    const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', { method: 'POST' })
     // Token is stored in an HttpOnly cookie by the server.
     // Display it once here so the user can copy it for CLI/API use.
     newlyGeneratedToken.value = newToken
@@ -105,9 +101,7 @@ const syncFromAgentSettings = (settings: AgentSettings) => {
 
 const loadAgentSettings = async () => {
   try {
-    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config', {
-      headers: authHeaders.value
-    })
+    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config')
     agentSettings.value = settings
     syncFromAgentSettings(settings)
   } catch {
@@ -135,7 +129,6 @@ const onAgentSubmit = async () => {
     }
     const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config', {
       method: 'POST',
-      headers: authHeaders.value,
       body: { patch, reason: 'Updated via config UI', source: 'user' }
     })
     agentSettings.value = settings
