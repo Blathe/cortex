@@ -23,6 +23,13 @@ export default defineNuxtConfig({
   nitro: {
     prerender: {
       routes: ['/', '/chat', '/config', '/jobs']
+    },
+    typescript: {
+      tsConfig: {
+        compilerOptions: {
+          types: ['node']
+        }
+      }
     }
   },
 

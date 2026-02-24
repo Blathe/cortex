@@ -1,11 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createError, defineEventHandler, readBody } from 'h3'
-
-const systemPrompt = readFileSync(
-  resolve(process.cwd(), 'agent/prompts/SYSTEM_PROMPT.md'),
-  'utf-8'
-).trim()
+import { readSettings } from '../utils/agentConfig'
 
 interface ChatRequestBody {
   prompt?: string
@@ -21,6 +17,11 @@ interface OpenAIChatCompletionResponse {
       content?: string | Array<{ type?: string, text?: string }>
     }
   }>
+}
+
+interface AgentConfigProposalRaw {
+  reason?: string
+  patch?: Record<string, unknown>
 }
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
@@ -45,6 +46,56 @@ const getTextContent = (content: OpenAIMessageContent) => {
   }
 
   return ''
+}
+
+const parseConfigProposal = (rawText: string) => {
+  const markerIndex = rawText.indexOf('CONFIG_PROPOSAL:')
+  if (markerIndex === -1) {
+    return { text: rawText, configProposal: undefined }
+  }
+
+  const visibleText = rawText.slice(0, markerIndex).trimEnd()
+  const afterMarker = rawText.slice(markerIndex + 'CONFIG_PROPOSAL:'.length)
+
+  // Extract JSON from code block or bare JSON
+  const codeBlockMatch = afterMarker.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const jsonString = (codeBlockMatch?.[1] ?? afterMarker).trim()
+
+  try {
+    const parsed = JSON.parse(jsonString) as AgentConfigProposalRaw
+    const patch = parsed.patch
+    const reason = parsed.reason ?? ''
+
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      return { text: rawText, configProposal: undefined }
+    }
+
+    // Determine risk level based on patch keys
+    const LOW_RISK = new Set(['persona.tone', 'persona.verbosity', 'reasoning.temperature', 'reasoning.maxTokens'])
+    const getDotPaths = (obj: Record<string, unknown>, prefix = ''): string[] => {
+      const paths: string[] = []
+      for (const key of Object.keys(obj)) {
+        const full = prefix ? `${prefix}.${key}` : key
+        const val = obj[key]
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+          paths.push(...getDotPaths(val as Record<string, unknown>, full))
+        } else {
+          paths.push(full)
+        }
+      }
+      return paths
+    }
+
+    const paths = getDotPaths(patch)
+    const riskLevel: 'low' | 'high' = paths.every(p => LOW_RISK.has(p)) ? 'low' : 'high'
+
+    return {
+      text: visibleText,
+      configProposal: { patch, reason, riskLevel }
+    }
+  } catch {
+    return { text: rawText, configProposal: undefined }
+  }
 }
 
 export default defineEventHandler(async (event) => {
@@ -72,6 +123,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'API key is required.' })
   }
 
+  const settings = readSettings()
+  const rawPrompt = readFileSync(resolve(process.cwd(), 'agent/prompts/SYSTEM_PROMPT.md'), 'utf-8').trim()
+  const systemPrompt = `[tone: ${settings.persona.tone}, verbosity: ${settings.persona.verbosity}]\n\n${rawPrompt}`
+
   try {
     const response = await $fetch<OpenAIChatCompletionResponse>(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -81,6 +136,8 @@ export default defineEventHandler(async (event) => {
       },
       body: {
         model,
+        temperature: settings.reasoning.temperature,
+        max_tokens: settings.reasoning.maxTokens,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
@@ -89,16 +146,17 @@ export default defineEventHandler(async (event) => {
     })
 
     const content = response?.choices?.[0]?.message?.content
-    const text = getTextContent(content)
+    const rawText = getTextContent(content)
 
-    if (!text) {
+    if (!rawText) {
       throw createError({
         statusCode: 502,
         statusMessage: 'OpenAI returned an empty response.'
       })
     }
 
-    return { text }
+    const { text, configProposal } = parseConfigProposal(rawText)
+    return { text, configProposal }
   } catch (error) {
     const fetchError = error as {
       statusCode?: number
