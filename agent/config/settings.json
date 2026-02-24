@@ -14,6 +14,7 @@
     "autoMerge": true
   },
   "meta": {
+    "onboarded": false,
     "updatedAt": "2026-02-24T08:11:28.238Z",
     "updatedBy": "user"
   }

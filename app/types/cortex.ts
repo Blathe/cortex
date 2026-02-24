@@ -77,6 +77,7 @@ export interface AgentSettings {
     autoMerge: boolean
   }
   meta: {
+    onboarded?: boolean
     updatedAt: string
     updatedBy: string
   }
