@@ -66,21 +66,9 @@ export const useCortexConfig = () => {
     return nextConfig
   }
 
-  const resetConfig = () => {
-    const defaults = getDefaultCortexConfig()
-    config.value = defaults
-
-    if (import.meta.client) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults))
-    }
-
-    return defaults
-  }
-
   return {
     config,
     loadConfig,
-    saveConfig,
-    resetConfig
+    saveConfig
   }
 }
