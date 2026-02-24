@@ -3,7 +3,8 @@
   "persona": {
     "name": "Cortex",
     "tone": "verbose",
-    "verbosity": "medium"
+
+    "verbosity": "low"
   },
   "reasoning": {
     "temperature": 0.7,
