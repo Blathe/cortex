@@ -139,13 +139,16 @@ const navigationItems = computed(() => {
         :ui="{ body: 'p-0' }"
       >
         <template #header>
-          <UDashboardNavbar :title="currentPageLabel">
+          <UDashboardNavbar
+            :title="currentPageLabel"
+            class="flex flex-row justify-between"
+          >
             <template #leading>
               <UDashboardSidebarCollapse class="hidden md:inline-flex" />
               <UDashboardSidebarToggle class="md:hidden" />
             </template>
 
-            <template #trailing>
+            <template #right>
               <UColorModeButton />
             </template>
           </UDashboardNavbar>
