@@ -200,4 +200,5 @@ export const commitToBranch = async (branch: string, files: string[], message: s
   await git('checkout', '-b', branch)
   await git('add', ...files)
   await git('commit', '-m', message)
+  await git('push', '--set-upstream', 'origin', branch)
 }
