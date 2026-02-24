@@ -43,7 +43,7 @@ describe('POST /api/chat provider runtime resolution', () => {
       persona: { name: 'Cortex', tone: 'professional', verbosity: 'medium' },
       reasoning: { temperature: 0.2, maxTokens: 512 },
       git: { autoPush: true, autoMerge: true },
-      meta: { onboarded: true, updatedAt: new Date().toISOString(), updatedBy: 'user' }
+      meta: { onboarded: true, updatedAt: new Date().toISOString(), updatedBy: 'user', revision: 1 }
     })
     vi.mocked(requestProviderChatCompletion).mockResolvedValue('hello from provider')
     vi.mocked(requestProviderChatCompletion).mockClear()

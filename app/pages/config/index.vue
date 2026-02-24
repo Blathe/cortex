@@ -42,6 +42,27 @@ const onCopyToken = async () => {
 
 const agentSettings = ref<AgentSettings | null>(null)
 const agentSaving = ref(false)
+const automationEnabled = ref(false)
+
+interface ConfigGetResponse {
+  settings: AgentSettings
+  automationEnabled: boolean
+}
+
+interface ConfigPostResponse {
+  settings: AgentSettings
+  persistenceStatus: 'persisted' | 'failed'
+  gitStatus: 'skipped' | 'pushed' | 'failed'
+  gitSkipReason?: 'auto_push_disabled' | 'automation_disabled'
+  gitError?: string
+  prStatus: 'not_attempted' | 'opened' | 'failed'
+  prSkipReason?: 'git_skipped' | 'automation_disabled' | 'github_not_configured' | 'repo_invalid' | 'git_failed'
+  prError?: string
+  prUrl?: string
+  prNumber?: number
+  prLabels?: string[]
+  automationEnabled: boolean
+}
 
 const agentState = reactive({
   personaName: 'Cortex',
@@ -84,8 +105,9 @@ const syncFromAgentSettings = (settings: AgentSettings) => {
 
 const loadAgentSettings = async () => {
   try {
-    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config')
+    const { settings, automationEnabled: enabled } = await $fetch<ConfigGetResponse>('/api/agent/config')
     agentSettings.value = settings
+    automationEnabled.value = enabled
     syncFromAgentSettings(settings)
   } catch {
     toast.add({ title: 'Could not load agent settings', color: 'error' })
@@ -110,14 +132,79 @@ const onAgentSubmit = async () => {
         autoMerge: agentState.autoMerge
       }
     }
-    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config', {
+    const expectedRevision = agentSettings.value?.meta.revision
+    const response = await $fetch<ConfigPostResponse>('/api/agent/config', {
       method: 'POST',
-      body: { patch, reason: 'Updated via config UI', source: 'user' }
+      body: {
+        patch,
+        reason: 'Updated via config UI',
+        source: 'user',
+        ...(typeof expectedRevision === 'number' ? { expectedRevision } : {})
+      }
     })
+    const { settings } = response
     agentSettings.value = settings
+    automationEnabled.value = response.automationEnabled
     syncFromAgentSettings(settings)
+
+    if (response.gitStatus === 'failed') {
+      toast.add({
+        title: 'Settings saved, git sync failed',
+        description: response.gitError ?? 'Change was persisted locally but git automation failed.',
+        color: 'warning'
+      })
+      return
+    }
+
+    if (response.gitStatus === 'skipped' && response.gitSkipReason === 'automation_disabled') {
+      toast.add({
+        title: 'Settings saved (automation disabled)',
+        description: 'Git automation is disabled by server policy.',
+        color: 'info'
+      })
+      return
+    }
+
+    if (response.gitStatus === 'skipped' && response.gitSkipReason === 'auto_push_disabled') {
+      toast.add({
+        title: 'Settings saved (auto-push off)',
+        description: 'Git automation was skipped because auto-push is disabled.',
+        color: 'info'
+      })
+      return
+    }
+
+    if (response.prStatus === 'failed') {
+      toast.add({
+        title: 'Settings saved, PR sync failed',
+        description: response.prError ?? 'Branch was pushed but pull request sync failed.',
+        color: 'warning'
+      })
+      return
+    }
+
+    if (response.prStatus === 'opened') {
+      toast.add({
+        title: 'Settings saved and PR synced',
+        description: response.prUrl ? `PR #${response.prNumber ?? ''} updated.` : 'Pull request is open.',
+        color: 'success'
+      })
+      return
+    }
+
     toast.add({ title: 'Agent settings saved', color: 'success' })
-  } catch {
+  } catch (error) {
+    const fetchError = error as { statusCode?: number }
+    if (fetchError.statusCode === 409) {
+      await loadAgentSettings()
+      toast.add({
+        title: 'Settings changed elsewhere',
+        description: 'Reloaded the latest settings. Review and save again.',
+        color: 'warning'
+      })
+      return
+    }
+
     toast.add({ title: 'Failed to save agent settings', color: 'error' })
   } finally {
     agentSaving.value = false
@@ -152,7 +239,7 @@ onMounted(async () => {
                   Agent Behavior
                 </p>
                 <p class="text-xs text-muted">
-                  Control the agent's persona, reasoning, and git automation. Changes are committed and PR'd automatically.
+                  Control the agent's persona, reasoning, and git automation. Changes are always saved locally and can be pushed automatically when enabled.
                 </p>
               </div>
             </template>
@@ -391,6 +478,14 @@ onMounted(async () => {
                 <span class="text-xs text-highlighted">{{ agentLastUpdatedLabel }}</span>
               </div>
               <div class="flex items-center justify-between gap-2">
+                <span class="text-sm text-muted">Git Automation</span>
+                <UBadge
+                  :label="automationEnabled ? 'Enabled' : 'Disabled by policy'"
+                  :color="automationEnabled ? 'success' : 'warning'"
+                  variant="subtle"
+                />
+              </div>
+              <div class="flex items-center justify-between gap-2">
                 <span class="text-sm text-muted">Persona</span>
                 <UBadge
                   :label="agentState.personaName"
@@ -417,7 +512,8 @@ onMounted(async () => {
             </template>
             <div class="space-y-2 text-sm text-muted">
               <p>Provider credentials are stored server-side in <code>agent/config/providers.json</code> (gitignored).</p>
-              <p>Agent behavior settings are written to <code>agent/config/settings.json</code> and committed on save.</p>
+              <p>Agent behavior settings are written to <code>agent/config/settings.json</code> on save.</p>
+              <p>Git push/PR automation runs only when policy and auto-push are enabled.</p>
               <p>System prompt is loaded from <code>agent/prompts/</code>.</p>
             </div>
           </UCard>

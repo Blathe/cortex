@@ -95,6 +95,7 @@ export interface AgentSettings {
     onboarded?: boolean
     updatedAt: string
     updatedBy: string
+    revision: number
   }
 }
 
