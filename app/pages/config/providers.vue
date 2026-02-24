@@ -130,6 +130,27 @@ const onSaveCredential = async (providerId: ProviderId) => {
   }
 }
 
+const onRemoveCredential = async (providerId: ProviderId) => {
+  providerSaving[providerId] = true
+  try {
+    await saveCredential(providerId, '')
+    credentialDrafts[providerId] = ''
+    toast.add({
+      title: `${getProviderById(providerId)?.label ?? providerId} token removed`,
+      color: 'success'
+    })
+  } catch (error) {
+    const err = error as { statusMessage?: string }
+    toast.add({
+      title: 'Failed to remove token',
+      description: err.statusMessage ?? 'Unknown error',
+      color: 'error'
+    })
+  } finally {
+    providerSaving[providerId] = false
+  }
+}
+
 const onTestProvider = async (providerId: ProviderId) => {
   providerTesting[providerId] = true
   try {
@@ -288,22 +309,43 @@ onMounted(async () => {
             <p class="text-xs text-muted">
               Endpoint: <code>{{ provider.baseUrl }}</code>
             </p>
-            <UFormField label="API Key">
+            <UFormField
+              v-if="!credentials[provider.providerId]?.configured"
+              label="API Key"
+            >
               <UInput
                 v-model="credentialDrafts[provider.providerId]"
                 type="password"
-                placeholder="Paste to update, empty to clear"
+                placeholder="Paste key to link provider"
                 autocomplete="off"
               />
             </UFormField>
 
+            <p
+              v-else
+              class="text-xs text-muted"
+            >
+              Token linked. Remove token to unlink this provider.
+            </p>
+
             <div class="flex gap-2">
               <UButton
+                v-if="!credentials[provider.providerId]?.configured"
                 size="sm"
                 :loading="providerSaving[provider.providerId]"
                 @click="onSaveCredential(provider.providerId)"
               >
                 Save key
+              </UButton>
+              <UButton
+                v-else
+                size="sm"
+                color="error"
+                variant="outline"
+                :loading="providerSaving[provider.providerId]"
+                @click="onRemoveCredential(provider.providerId)"
+              >
+                Remove token
               </UButton>
               <UButton
                 size="sm"
