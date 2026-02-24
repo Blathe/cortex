@@ -1,4 +1,4 @@
-import type { ChatStatus, CortexChatMessage, CortexChatRole } from '~/types/cortex'
+import type { AgentConfigProposal, ChatStatus, CortexChatMessage, CortexChatRole } from '~/types/cortex'
 
 const INITIAL_MESSAGE = 'Welcome to Cortex. Ask a question to start a mock agent conversation.'
 
@@ -12,17 +12,19 @@ const createId = () => {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
-const buildMessage = (role: CortexChatRole, text: string): CortexChatMessage => {
+const buildMessage = (role: CortexChatRole, text: string, configProposal?: AgentConfigProposal): CortexChatMessage => {
   return {
     id: createId(),
     role,
     parts: [{ type: 'text', text }],
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    ...(configProposal ? { configProposal } : {})
   }
 }
 
 interface ChatApiResponse {
   text: string
+  configProposal?: AgentConfigProposal
 }
 
 interface OpenAIChatCompletionResponse {
@@ -198,7 +200,7 @@ export const useCortexChat = () => {
         }
       })
 
-      appendAssistantMessage(response.text)
+      messages.value = [...messages.value, buildMessage('assistant', response.text, response.configProposal)]
       status.value = 'ready'
     } catch (error) {
       const fetchError = error as {
@@ -276,6 +278,12 @@ export const useCortexChat = () => {
     return true
   }
 
+  const clearProposal = (messageId: string) => {
+    messages.value = messages.value.map(msg =>
+      msg.id === messageId ? { ...msg, configProposal: undefined } : msg
+    )
+  }
+
   const stopResponse = () => {
     clearTimers()
     abortActiveRequest()
@@ -295,6 +303,7 @@ export const useCortexChat = () => {
     lastError,
     sendPrompt,
     stopResponse,
-    retryLastResponse
+    retryLastResponse,
+    clearProposal
   }
 }

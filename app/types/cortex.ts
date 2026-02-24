@@ -7,11 +7,18 @@ export interface CortexChatPart {
   text: string
 }
 
+export interface AgentConfigProposal {
+  patch: Record<string, unknown>
+  reason: string
+  riskLevel: 'low' | 'high'
+}
+
 export interface CortexChatMessage {
   id: string
   role: CortexChatRole
   parts: CortexChatPart[]
   createdAt: string
+  configProposal?: AgentConfigProposal
 }
 
 export interface CortexConfig {
@@ -20,6 +27,14 @@ export interface CortexConfig {
   baseUrl: string
   apiKey: string
   updatedAt: string
+}
+
+export interface CortexProvider {
+  id: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  models: string[]
 }
 
 export type JobStatus = 'running' | 'completed' | 'failed' | 'pending'

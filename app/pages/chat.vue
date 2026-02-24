@@ -8,7 +8,8 @@ const {
   lastError,
   sendPrompt,
   stopResponse,
-  retryLastResponse
+  retryLastResponse,
+  clearProposal
 } = useCortexChat()
 const { config, loadConfig } = useCortexConfig()
 const toast = useToast()
@@ -66,6 +67,10 @@ const copyMessageText = async (message: CortexChatMessage) => {
     })
   }
 }
+
+const proposalMessages = computed(() =>
+  messages.value.filter(msg => msg.role === 'assistant' && msg.configProposal)
+)
 
 const chatMessages = computed(() => {
   return messages.value.map(message => ({
@@ -127,6 +132,18 @@ onMounted(() => {
           :spacing-offset="176"
           should-auto-scroll
         />
+        <div
+          v-if="proposalMessages.length"
+          class="mt-4 space-y-3"
+        >
+          <ConfigProposalCard
+            v-for="msg in proposalMessages"
+            :key="msg.id"
+            :message-id="msg.id"
+            :proposal="msg.configProposal!"
+            @dismiss="clearProposal"
+          />
+        </div>
       </UContainer>
     </div>
 

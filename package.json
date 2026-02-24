@@ -15,10 +15,12 @@
     "@iconify-json/simple-icons": "^1.2.70",
     "@nuxt/ui": "^4.4.0",
     "nuxt": "^4.3.1",
+    "simple-git": "^3.32.2",
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
     "@nuxt/eslint": "^1.15.1",
+    "@types/node": "^25.3.0",
     "eslint": "^10.0.0",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.2.4"
