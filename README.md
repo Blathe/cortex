@@ -5,8 +5,9 @@ A Nuxt.js 4 dashboard for interacting with an autonomous AI agent. Chat with the
 ## Features
 
 - **Chat interface** — send prompts and receive streaming responses with Markdown rendering
-- **Agent config** — update persona, reasoning parameters, and git behavior via the UI; changes are committed and PR'd automatically
-- **Config changelogs** — every config update writes a Markdown changelog to `agent/logs/`
+- **Agent config** — update persona (name, tone, verbosity), reasoning parameters, and git automation via the UI; changes are committed and PR'd automatically
+- **Dashboard preferences** — choose primary color, color mode (light/dark/system), timezone, and date format; persisted to `localStorage`
+- **Config changelogs** — every agent config update writes a Markdown changelog to `agent/logs/`
 - **Job tracking** — dashboard, logs, and cron views for monitoring agent activity
 - **Mock mode** — works out of the box without an API key for local development
 
@@ -49,23 +50,30 @@ pnpm typecheck # Run TypeScript type checking
 ```
 app/
   pages/
-    index.vue         # Landing page
-    chat.vue          # Primary chat interface
-    config/           # LLM provider configuration
-    jobs/             # Job tracking (dashboard, logs, crons)
+    index.vue              # Landing page
+    chat.vue               # Primary chat interface
+    config/
+      index.vue            # Agent behavior settings (persona, reasoning, git)
+      dashboard.vue        # Dashboard preferences (color, timezone, date format)
+      providers.vue        # LLM provider management
+      sources.vue          # Data source integrations
+      logs.vue             # Agent config changelogs
+    jobs/                  # Job tracking (dashboard, logs, crons)
   composables/
-    useCortexChat.ts  # Chat state and logic
-    useCortexConfig.ts# LLM config (persisted to localStorage)
-  types/cortex.ts     # Shared TypeScript interfaces
+    useCortexChat.ts       # Chat state and logic
+    useCortexConfig.ts     # LLM config (persisted to localStorage)
+    useCortexDashboard.ts  # Dashboard preferences (persisted to localStorage)
+    useCortexProviders.ts  # Provider list management
+  types/cortex.ts          # Shared TypeScript interfaces
 server/
   api/
-    chat.post.ts      # Proxies to OpenAI, injects agent settings
-    agent/config.get.ts
-    agent/config.post.ts
+    chat.post.ts           # Proxies to OpenAI, injects agent settings
+    agent/config.get.ts    # GET /api/agent/config
+    agent/config.post.ts   # POST /api/agent/config — patches, commits, opens PR
 agent/
-  config/settings.json  # Agent behavioral config
+  config/settings.json     # Agent behavioral config
   prompts/SYSTEM_PROMPT.md
-  logs/               # Auto-generated changelogs
+  logs/                    # Auto-generated changelogs
 ```
 
 ## Agent Configuration
@@ -80,7 +88,7 @@ agent/
 }
 ```
 
-Config updates made through the UI are committed to a branch and opened as a GitHub PR. PRs labeled `auto-merge` are merged automatically via `.github/workflows/auto-merge-config.yml`; those labeled `needs-review` are left open.
+Changes made through the UI (`/config`) are committed to a new branch and opened as a GitHub PR. PRs labeled `auto-merge` are merged automatically via `.github/workflows/auto-merge-config.yml`; those labeled `needs-review` are left open.
 
 ## Tech Stack
 
