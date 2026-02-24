@@ -4,19 +4,72 @@ import type { StepperItem } from '@nuxt/ui'
 const { addProvider, setActive } = useCortexProviders()
 const { saveToken, authHeaders } = useCortexAuth()
 
+// ── Bootstrap (runs before the wizard is shown) ─────────────────────────────
+// We call POST /api/agent/auth/generate on mount to silently establish a session.
+// If CORTEX_SETUP_SECRET is configured the server returns 403 and we prompt for it.
+// If a token exists but the cookie is missing/expired the server returns 401 and
+// we fall back to the manual-token login flow.
+type BootstrapState = 'loading' | 'ready' | 'setup-secret' | 'login'
+const bootstrapState = ref<BootstrapState>('loading')
+const bootstrapError = ref<string | null>(null)
+const setupSecret = ref('')
+const loginToken = ref('')
+
+const tryGenerate = async (secret?: string) => {
+  bootstrapError.value = null
+  const headers: Record<string, string> = {}
+  if (secret) headers['x-cortex-setup-secret'] = secret
+  await $fetch('/api/agent/auth/generate', { method: 'POST', headers })
+  bootstrapState.value = 'ready'
+}
+
+const handleBootstrapSecret = async () => {
+  if (!setupSecret.value.trim()) return
+  try {
+    await tryGenerate(setupSecret.value.trim())
+  } catch (e) {
+    const err = e as { statusCode?: number, statusMessage?: string }
+    bootstrapError.value = err.statusCode === 403
+      ? 'Invalid setup secret. Check your CORTEX_SETUP_SECRET environment variable.'
+      : (err.statusMessage ?? 'Failed to authenticate.')
+  }
+}
+
+const handleLogin = async () => {
+  if (!loginToken.value.trim()) return
+  bootstrapError.value = null
+  try {
+    await saveToken(loginToken.value.trim())
+    bootstrapState.value = 'ready'
+  } catch (e) {
+    const err = e as { statusMessage?: string }
+    bootstrapError.value = err.statusMessage ?? 'Invalid token.'
+  }
+}
+
+onMounted(async () => {
+  try {
+    await tryGenerate()
+  } catch (e) {
+    const err = e as { statusCode?: number }
+    if (err.statusCode === 403) {
+      bootstrapState.value = 'setup-secret'
+    } else if (err.statusCode === 401) {
+      bootstrapState.value = 'login'
+    } else {
+      // Unexpected error — still let the user proceed; API calls will surface the error.
+      bootstrapState.value = 'ready'
+    }
+  }
+})
+
+// ── Wizard ───────────────────────────────────────────────────────────────────
 const currentStep = ref<number>(0)
 const isDone = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// Step 1 — API Token
-const tokenMode = ref<'generate' | 'paste'>('generate')
-const pastedToken = ref('')
-const generatedToken = ref('')
-const setupSecret = ref('')
-const needsSetupSecret = ref(false)
-
-// Step 2 — LLM Provider
+// Step 1 — LLM Provider
 const providerForm = reactive({
   name: 'OpenAI',
   baseUrl: 'https://api.openai.com/v1',
@@ -24,13 +77,13 @@ const providerForm = reactive({
   model: 'gpt-4o'
 })
 
-// Step 3 — GitHub
+// Step 2 — GitHub
 const githubForm = reactive({
   ghRepo: '',
   ghToken: ''
 })
 
-// Step 4 — Persona
+// Step 3 — Persona
 const personaForm = reactive({
   name: 'Cortex',
   tone: 'casual',
@@ -39,7 +92,6 @@ const personaForm = reactive({
 
 const steps = ref<StepperItem[]>([
   { title: 'Welcome', description: 'Introduction', icon: 'i-lucide-sparkles' },
-  { title: 'API Token', description: 'Secure access token', icon: 'i-lucide-key' },
   { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
   { title: 'GitHub', description: 'Repository credentials', icon: 'i-lucide-github' },
   { title: 'Persona', description: 'Agent behavior', icon: 'i-lucide-bot' }
@@ -58,43 +110,11 @@ const verbosityOptions = [
   { label: 'High', value: 'high' }
 ]
 
-const handleGenerateToken = async () => {
-  isLoading.value = true
-  error.value = null
-  try {
-    const headers: Record<string, string> = { ...authHeaders.value }
-    if (setupSecret.value.trim()) {
-      headers['x-cortex-setup-secret'] = setupSecret.value.trim()
-    }
-    const res = await $fetch<{ token: string }>('/api/agent/auth/generate', {
-      method: 'POST',
-      headers
-    })
-    // Server sets an HttpOnly cookie — display the token here for CLI/API backup only.
-    generatedToken.value = res.token
-    needsSetupSecret.value = false
-  } catch (e) {
-    const err = e as { statusCode?: number, statusMessage?: string }
-    if (err.statusCode === 403) {
-      needsSetupSecret.value = true
-      error.value = 'A setup secret is required. Enter the value of CORTEX_SETUP_SECRET from your server environment.'
-    } else {
-      error.value = err.statusMessage ?? 'Failed to generate token.'
-    }
-  } finally {
-    isLoading.value = false
-  }
-}
-
 const goNext = async () => {
   error.value = null
   isLoading.value = true
   try {
     if (currentStep.value === 1) {
-      if (tokenMode.value === 'paste' && pastedToken.value.trim()) {
-        await saveToken(pastedToken.value.trim())
-      }
-    } else if (currentStep.value === 2) {
       const id = await addProvider({
         name: providerForm.name,
         baseUrl: providerForm.baseUrl,
@@ -102,14 +122,14 @@ const goNext = async () => {
         models: [providerForm.model]
       })
       await setActive(id)
-    } else if (currentStep.value === 3) {
+    } else if (currentStep.value === 2) {
       const vars: { key: string, value: string }[] = []
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
       if (githubForm.ghToken.trim()) vars.push({ key: 'GH_TOKEN', value: githubForm.ghToken.trim() })
       if (vars.length) {
         await $fetch('/api/agent/env', { method: 'POST', headers: authHeaders.value, body: { vars } })
       }
-    } else if (currentStep.value === 4) {
+    } else if (currentStep.value === 3) {
       await $fetch('/api/agent/config', {
         method: 'POST',
         headers: authHeaders.value,
@@ -127,7 +147,7 @@ const goNext = async () => {
       })
     }
 
-    if (currentStep.value < 4) {
+    if (currentStep.value < 3) {
       currentStep.value += 1
     } else {
       await finishOnboarding()
@@ -180,8 +200,106 @@ const goBack = () => {
         </div>
       </div>
 
+      <!-- Bootstrap: loading -->
+      <div
+        v-if="bootstrapState === 'loading'"
+        class="flex justify-center py-16"
+      >
+        <UIcon
+          name="i-lucide-loader-circle"
+          class="size-8 animate-spin text-muted"
+        />
+      </div>
+
+      <!-- Bootstrap: setup secret required -->
+      <UCard v-else-if="bootstrapState === 'setup-secret'">
+        <div class="space-y-4">
+          <div class="flex items-center gap-3">
+            <UIcon
+              name="i-lucide-lock"
+              class="size-5 text-primary"
+            />
+            <h2 class="text-lg font-semibold text-highlighted">
+              Setup Secret Required
+            </h2>
+          </div>
+          <p class="text-sm text-muted">
+            This server requires a setup secret to generate the first access token.
+            Enter the value of <code class="rounded bg-elevated px-1">CORTEX_SETUP_SECRET</code> from your server environment.
+          </p>
+          <UFormField label="Setup Secret">
+            <UInput
+              v-model="setupSecret"
+              type="password"
+              placeholder="Enter setup secret"
+              class="w-full"
+              @keydown.enter="handleBootstrapSecret"
+            />
+          </UFormField>
+          <UAlert
+            v-if="bootstrapError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-x"
+            :title="bootstrapError"
+          />
+        </div>
+        <template #footer>
+          <UButton
+            icon="i-lucide-arrow-right"
+            trailing
+            @click="handleBootstrapSecret"
+          >
+            Continue
+          </UButton>
+        </template>
+      </UCard>
+
+      <!-- Bootstrap: login with existing token -->
+      <UCard v-else-if="bootstrapState === 'login'">
+        <div class="space-y-4">
+          <div class="flex items-center gap-3">
+            <UIcon
+              name="i-lucide-key"
+              class="size-5 text-primary"
+            />
+            <h2 class="text-lg font-semibold text-highlighted">
+              Enter Your Access Token
+            </h2>
+          </div>
+          <p class="text-sm text-muted">
+            An access token is already configured on this server. Paste it below to authenticate your browser session.
+          </p>
+          <UFormField label="Access Token">
+            <UInput
+              v-model="loginToken"
+              type="password"
+              placeholder="Paste your token"
+              class="w-full"
+              @keydown.enter="handleLogin"
+            />
+          </UFormField>
+          <UAlert
+            v-if="bootstrapError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-circle-x"
+            :title="bootstrapError"
+          />
+        </div>
+        <template #footer>
+          <UButton
+            icon="i-lucide-arrow-right"
+            trailing
+            @click="handleLogin"
+          >
+            Continue
+          </UButton>
+        </template>
+      </UCard>
+
       <!-- Done screen -->
-      <div v-if="isDone">
+      <div v-else-if="isDone">
         <UCard>
           <div class="py-8 text-center">
             <UIcon
@@ -205,7 +323,7 @@ const goBack = () => {
         </UCard>
       </div>
 
-      <!-- Wizard -->
+      <!-- Wizard (bootstrapState === 'ready') -->
       <template v-else>
         <UStepper
           v-model="currentStep"
@@ -225,13 +343,6 @@ const goBack = () => {
               Let's get you set up. This wizard will walk you through:
             </p>
             <ul class="mb-6 space-y-3 text-sm text-default">
-              <li class="flex items-center gap-2">
-                <UIcon
-                  name="i-lucide-key"
-                  class="size-4 shrink-0 text-primary"
-                />
-                Setting up a secure API token
-              </li>
               <li class="flex items-center gap-2">
                 <UIcon
                   name="i-lucide-plug"
@@ -256,63 +367,8 @@ const goBack = () => {
             </ul>
           </div>
 
-          <!-- Step 1: API Token -->
+          <!-- Step 1: LLM Provider -->
           <div v-else-if="currentStep === 1">
-            <h2 class="mb-2 text-xl font-semibold text-highlighted">
-              API Token
-            </h2>
-            <p class="mb-4 text-sm text-muted">
-              Cortex uses a bearer token to secure its API. Generate one now.
-            </p>
-
-            <div v-if="tokenMode === 'generate'">
-              <div
-                v-if="needsSetupSecret"
-                class="mb-4"
-              >
-                <UFormField
-                  label="Setup Secret"
-                  description="Enter the CORTEX_SETUP_SECRET value configured on the server."
-                >
-                  <UInput
-                    v-model="setupSecret"
-                    type="password"
-                    placeholder="Setup secret"
-                    class="w-full"
-                  />
-                </UFormField>
-              </div>
-              <UButton
-                :loading="isLoading"
-                icon="i-lucide-refresh-cw"
-                @click="handleGenerateToken"
-              >
-                Generate token
-              </UButton>
-              <div
-                v-if="generatedToken"
-                class="mt-4 rounded-md bg-elevated p-3"
-              >
-                <p class="mb-1 text-xs text-muted">
-                  Your token (saved automatically):
-                </p>
-                <code class="break-all text-sm text-highlighted">{{ generatedToken }}</code>
-              </div>
-            </div>
-            <div v-else>
-              <UFormField label="Existing Token">
-                <UInput
-                  v-model="pastedToken"
-                  type="password"
-                  placeholder="Paste your token here"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
-          </div>
-
-          <!-- Step 2: LLM Provider -->
-          <div v-else-if="currentStep === 2">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               LLM Provider
             </h2>
@@ -352,8 +408,8 @@ const goBack = () => {
             </div>
           </div>
 
-          <!-- Step 3: GitHub Setup -->
-          <div v-else-if="currentStep === 3">
+          <!-- Step 2: GitHub Setup -->
+          <div v-else-if="currentStep === 2">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               GitHub Setup
             </h2>
@@ -402,8 +458,8 @@ const goBack = () => {
             </p>
           </div>
 
-          <!-- Step 4: Agent Persona -->
-          <div v-else-if="currentStep === 4">
+          <!-- Step 3: Agent Persona -->
+          <div v-else-if="currentStep === 3">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               Agent Persona
             </h2>
@@ -461,10 +517,10 @@ const goBack = () => {
               <UButton
                 :loading="isLoading"
                 trailing
-                :icon="currentStep === 4 ? 'i-lucide-check' : 'i-lucide-arrow-right'"
+                :icon="currentStep === 3 ? 'i-lucide-check' : 'i-lucide-arrow-right'"
                 @click="goNext"
               >
-                {{ currentStep === 3 ? 'Skip / Next' : currentStep === 4 ? 'Finish' : 'Next' }}
+                {{ currentStep === 2 ? 'Skip / Next' : currentStep === 3 ? 'Finish' : 'Next' }}
               </UButton>
             </div>
           </template>
