@@ -1,299 +1,323 @@
 <script setup lang="ts">
-import type { TableColumn } from '@nuxt/ui'
-import type { CortexProvider } from '~/types/cortex'
+import type { ProviderId } from '~/types/cortex'
 
-const { providers, activeProviderId, loadProviders, addProvider, updateProvider, deleteProvider, setActive } = useCortexProviders()
+const {
+  catalog,
+  credentials,
+  active,
+  migrationWarnings,
+  loadProviders,
+  setActive,
+  saveCredential,
+  validateConnection,
+  getProviderById
+} = useCortexProviders()
 const toast = useToast()
 
-onMounted(() => loadProviders())
-
-// Modal state
-const modalOpen = ref(false)
-const editingId = ref<string | null>(null)
-const isSaving = ref(false)
-
-const formState = reactive({
-  name: '',
-  baseUrl: '',
-  apiKey: '',
-  models: [] as string[]
+const runtimeSelection = reactive({
+  providerId: 'openai' as ProviderId,
+  modelId: 'gpt-4o-mini'
 })
 
-const modalTitle = computed(() => editingId.value ? 'Edit provider' : 'Add provider')
+const credentialDrafts = reactive<Record<string, string>>({})
+const runtimeSaving = ref(false)
+const runtimeTesting = ref(false)
+const providerSaving = reactive<Record<string, boolean>>({})
+const providerTesting = reactive<Record<string, boolean>>({})
 
-const openAdd = () => {
-  editingId.value = null
-  formState.name = ''
-  formState.baseUrl = ''
-  formState.apiKey = ''
-  formState.models = ['']
-  modalOpen.value = true
-}
+const providerItems = computed(() =>
+  catalog.value.map(provider => ({ label: provider.label, value: provider.providerId }))
+)
 
-const openEdit = (provider: CortexProvider) => {
-  editingId.value = provider.id
-  formState.name = provider.name
-  formState.baseUrl = provider.baseUrl
-  formState.apiKey = '' // never pre-fill — leave blank to keep existing key on server
-  formState.models = [...provider.models]
-  modalOpen.value = true
-}
+const runtimeProvider = computed(() => getProviderById(runtimeSelection.providerId))
 
-const addModelEntry = () => {
-  formState.models.push('')
-}
+const modelItems = computed(() =>
+  (runtimeProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
+)
 
-const removeModelEntry = (index: number) => {
-  formState.models.splice(index, 1)
-}
+const activeProviderLabel = computed(() => {
+  if (!active.value) return 'not set'
+  return getProviderById(active.value.providerId)?.label ?? active.value.providerId
+})
 
-const onSave = async () => {
-  isSaving.value = true
-  try {
-    const cleanModels = formState.models.map(m => m.trim()).filter(Boolean)
-    const payload = {
-      name: formState.name.trim(),
-      baseUrl: formState.baseUrl.trim(),
-      apiKey: formState.apiKey.trim(), // empty = keep existing key on server
-      models: cleanModels
-    }
+const ensureRuntimeSelection = () => {
+  const first = catalog.value[0]
+  if (!first) {
+    return
+  }
 
-    if (editingId.value) {
-      await updateProvider(editingId.value, payload)
-      toast.add({ title: 'Provider updated', color: 'success' })
-    } else {
-      await addProvider(payload)
-      toast.add({ title: 'Provider added', color: 'success' })
-    }
+  if (active.value) {
+    runtimeSelection.providerId = active.value.providerId
+    runtimeSelection.modelId = active.value.modelId
+  }
 
-    modalOpen.value = false
-  } catch (e) {
-    const err = e as { statusMessage?: string }
-    toast.add({ title: 'Failed to save provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
-  } finally {
-    isSaving.value = false
+  const provider = getProviderById(runtimeSelection.providerId) ?? first
+  runtimeSelection.providerId = provider.providerId
+  if (!provider.models.some(model => model.id === runtimeSelection.modelId)) {
+    runtimeSelection.modelId = provider.defaultModel
   }
 }
 
-const onDelete = async (provider: CortexProvider) => {
+const onRuntimeProviderChanged = () => {
+  const provider = getProviderById(runtimeSelection.providerId)
+  if (!provider) return
+
+  if (!provider.models.some(model => model.id === runtimeSelection.modelId)) {
+    runtimeSelection.modelId = provider.defaultModel
+  }
+}
+
+const onSaveRuntime = async () => {
+  runtimeSaving.value = true
   try {
-    await deleteProvider(provider.id)
+    await setActive(runtimeSelection.providerId, runtimeSelection.modelId)
+    toast.add({ title: 'Runtime updated', color: 'success' })
+  } catch (error) {
+    const err = error as { statusMessage?: string }
     toast.add({
-      title: 'Provider deleted',
-      description: `"${provider.name}" has been removed.`,
-      color: 'warning'
+      title: 'Failed to update runtime',
+      description: err.statusMessage ?? 'Unknown error',
+      color: 'error'
     })
-  } catch (e) {
-    const err = e as { statusMessage?: string }
-    toast.add({ title: 'Failed to delete provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
+  } finally {
+    runtimeSaving.value = false
   }
 }
 
-const onSetActive = async (provider: CortexProvider) => {
+const onTestRuntime = async () => {
+  runtimeTesting.value = true
   try {
-    await setActive(provider.id)
+    const result = await validateConnection(runtimeSelection.providerId, runtimeSelection.modelId)
+    if (result.mode === 'mock') {
+      toast.add({
+        title: 'Runtime is in mock mode',
+        description: result.message ?? 'No API key configured for this provider.',
+        color: 'warning'
+      })
+    } else {
+      toast.add({ title: 'Runtime connection successful', color: 'success' })
+    }
+  } catch (error) {
+    const err = error as { statusMessage?: string }
     toast.add({
-      title: 'Active provider set',
-      description: `"${provider.name}" is now active.`,
+      title: 'Runtime validation failed',
+      description: err.statusMessage ?? 'Unknown error',
+      color: 'error'
+    })
+  } finally {
+    runtimeTesting.value = false
+  }
+}
+
+const onSaveCredential = async (providerId: ProviderId) => {
+  providerSaving[providerId] = true
+  try {
+    const apiKey = credentialDrafts[providerId] ?? ''
+    const result = await saveCredential(providerId, apiKey)
+    toast.add({
+      title: `${getProviderById(providerId)?.label ?? providerId} key ${result.configured ? 'saved' : 'cleared'}`,
       color: 'success'
     })
-  } catch (e) {
-    const err = e as { statusMessage?: string }
-    toast.add({ title: 'Failed to set active provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
+  } catch (error) {
+    const err = error as { statusMessage?: string }
+    toast.add({
+      title: 'Failed to save credential',
+      description: err.statusMessage ?? 'Unknown error',
+      color: 'error'
+    })
+  } finally {
+    providerSaving[providerId] = false
   }
 }
 
-const columns: TableColumn<CortexProvider>[] = [
-  { accessorKey: 'name', header: 'Name' },
-  { accessorKey: 'baseUrl', header: 'Base URL' },
-  { accessorKey: 'models', header: 'Models' },
-  { accessorKey: 'apiKeySet', header: 'API Key' },
-  { id: 'actions', header: '' }
-]
+const onTestProvider = async (providerId: ProviderId) => {
+  providerTesting[providerId] = true
+  try {
+    const provider = getProviderById(providerId)
+    if (!provider) {
+      throw new Error('Provider not found')
+    }
+    const modelId = provider.defaultModel
+    const draftKey = (credentialDrafts[providerId] ?? '').trim()
+    const result = await validateConnection(providerId, modelId, draftKey || undefined)
+    if (result.mode === 'mock') {
+      toast.add({
+        title: `${provider.label} is in mock mode`,
+        description: result.message ?? 'No API key configured.',
+        color: 'warning'
+      })
+    } else {
+      toast.add({ title: `${provider.label} connection successful`, color: 'success' })
+    }
+  } catch (error) {
+    const err = error as { statusMessage?: string, message?: string }
+    toast.add({
+      title: 'Connection test failed',
+      description: err.statusMessage ?? err.message ?? 'Unknown error',
+      color: 'error'
+    })
+  } finally {
+    providerTesting[providerId] = false
+  }
+}
+
+onMounted(async () => {
+  try {
+    await loadProviders()
+    ensureRuntimeSelection()
+
+    for (const provider of catalog.value) {
+      credentialDrafts[provider.providerId] = ''
+      providerSaving[provider.providerId] = false
+      providerTesting[provider.providerId] = false
+    }
+  } catch {
+    toast.add({
+      title: 'Failed to load providers',
+      description: 'Refresh the page or re-authenticate and try again.',
+      color: 'error'
+    })
+  }
+})
 </script>
 
 <template>
-  <div>
-    <UContainer class="py-6 md:py-8">
-      <div class="space-y-6">
-        <PageHeader
-          title="Providers"
-          description="Manage LLM provider endpoints. Set one active to use it in chat."
-        />
+  <UContainer class="py-6 md:py-8">
+    <div class="space-y-6">
+      <PageHeader
+        title="Providers"
+        description="Choose the active provider/model runtime and manage provider credentials."
+      />
 
-        <div class="flex justify-end">
-          <UButton
-            icon="i-lucide-plus"
-            @click="openAdd"
-          >
-            Add provider
-          </UButton>
+      <UAlert
+        v-if="migrationWarnings.length"
+        icon="i-lucide-triangle-alert"
+        color="warning"
+        variant="subtle"
+        title="Legacy provider entries were disabled during migration"
+      >
+        <template #description>
+          <ul class="space-y-1 text-xs">
+            <li
+              v-for="warning in migrationWarnings"
+              :key="warning.legacyId"
+            >
+              <strong>{{ warning.legacyName }}:</strong> {{ warning.reason }}
+            </li>
+          </ul>
+        </template>
+      </UAlert>
+
+      <UCard>
+        <template #header>
+          <div class="space-y-1">
+            <p class="text-sm font-medium text-highlighted">
+              Active Runtime
+            </p>
+            <p class="text-xs text-muted">
+              Chat requests resolve provider and model server-side from this selection.
+            </p>
+          </div>
+        </template>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <UFormField label="Provider">
+            <USelect
+              v-model="runtimeSelection.providerId"
+              :items="providerItems"
+              value-key="value"
+              @update:model-value="onRuntimeProviderChanged"
+            />
+          </UFormField>
+
+          <UFormField label="Model">
+            <USelect
+              v-model="runtimeSelection.modelId"
+              :items="modelItems"
+              value-key="value"
+            />
+          </UFormField>
         </div>
 
-        <UTable
-          :data="providers"
-          :columns="columns"
-        >
-          <template #name-cell="{ row }">
-            <div class="flex items-center gap-2">
-              <span class="font-medium">{{ row.original.name }}</span>
-              <UBadge
-                v-if="row.original.id === activeProviderId"
-                label="active"
-                color="primary"
-                size="xs"
-              />
-            </div>
-          </template>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-muted">
+            Current active runtime:
+            <span class="font-medium text-highlighted">{{ activeProviderLabel }}</span>
+            <span class="text-highlighted"> / {{ active?.modelId || 'not set' }}</span>
+          </p>
 
-          <template #baseUrl-cell="{ row }">
-            <span class="max-w-xs truncate text-sm text-muted">{{ row.original.baseUrl || '—' }}</span>
-          </template>
-
-          <template #models-cell="{ row }">
-            <UBadge
-              :label="`${row.original.models.length} model${row.original.models.length === 1 ? '' : 's'}`"
+          <div class="flex gap-2">
+            <UButton
               color="neutral"
-              variant="subtle"
-              size="xs"
-            />
-          </template>
+              variant="outline"
+              :loading="runtimeTesting"
+              @click="onTestRuntime"
+            >
+              Test connection
+            </UButton>
+            <UButton
+              :loading="runtimeSaving"
+              @click="onSaveRuntime"
+            >
+              Save runtime
+            </UButton>
+          </div>
+        </div>
+      </UCard>
 
-          <template #apiKeySet-cell="{ row }">
-            <UBadge
-              :label="row.original.apiKeySet ? 'Set' : 'Not set'"
-              :color="row.original.apiKeySet ? 'success' : 'neutral'"
-              variant="subtle"
-              size="xs"
-            />
-          </template>
-
-          <template #actions-cell="{ row }">
-            <div class="flex items-center justify-end gap-1">
-              <UButton
-                v-if="row.original.id !== activeProviderId"
-                label="Set active"
+      <div class="grid gap-4 md:grid-cols-3">
+        <UCard
+          v-for="provider in catalog"
+          :key="provider.providerId"
+        >
+          <template #header>
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-highlighted">
+                {{ provider.label }}
+              </p>
+              <UBadge
+                :label="credentials[provider.providerId]?.configured ? 'key set' : 'mock mode'"
+                :color="credentials[provider.providerId]?.configured ? 'success' : 'warning'"
+                variant="subtle"
                 size="xs"
-                color="neutral"
-                variant="ghost"
-                @click="onSetActive(row.original)"
-              />
-
-              <UButton
-                icon="i-lucide-pencil"
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                aria-label="Edit"
-                @click="openEdit(row.original)"
-              />
-
-              <UButton
-                icon="i-lucide-trash-2"
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                aria-label="Delete"
-                :disabled="providers.length <= 1"
-                @click="onDelete(row.original)"
               />
             </div>
           </template>
-        </UTable>
-      </div>
-    </UContainer>
 
-    <UModal
-      v-model:open="modalOpen"
-      :title="modalTitle"
-    >
-      <template #body>
-        <div class="space-y-4">
-          <UFormField
-            label="Name"
-            required
-          >
-            <UInput
-              v-model="formState.name"
-              placeholder="OpenAI"
-            />
-          </UFormField>
+          <div class="space-y-3">
+            <p class="text-xs text-muted">
+              Endpoint: <code>{{ provider.baseUrl }}</code>
+            </p>
+            <UFormField label="API Key">
+              <UInput
+                v-model="credentialDrafts[provider.providerId]"
+                type="password"
+                placeholder="Paste to update, empty to clear"
+                autocomplete="off"
+              />
+            </UFormField>
 
-          <UFormField
-            label="Base URL"
-            required
-          >
-            <UInput
-              v-model="formState.baseUrl"
-              placeholder="https://api.openai.com/v1"
-            />
-          </UFormField>
-
-          <UFormField
-            label="API Key"
-            :hint="editingId ? 'Leave blank to keep existing key' : 'Optional'"
-          >
-            <UInput
-              v-model="formState.apiKey"
-              type="password"
-              autocomplete="off"
-              placeholder="sk-..."
-            />
-          </UFormField>
-
-          <UFormField label="Models">
-            <div class="space-y-2">
-              <div
-                v-for="(_, i) in formState.models"
-                :key="i"
-                class="flex items-center gap-2"
-              >
-                <UInput
-                  v-model="formState.models[i]"
-                  placeholder="gpt-4o"
-                  class="flex-1"
-                />
-                <UButton
-                  icon="i-lucide-x"
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  aria-label="Remove model"
-                  :disabled="formState.models.length <= 1"
-                  @click="removeModelEntry(i)"
-                />
-              </div>
+            <div class="flex gap-2">
               <UButton
-                size="xs"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-plus"
-                @click="addModelEntry"
+                size="sm"
+                :loading="providerSaving[provider.providerId]"
+                @click="onSaveCredential(provider.providerId)"
               >
-                Add model
+                Save key
+              </UButton>
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="outline"
+                :loading="providerTesting[provider.providerId]"
+                @click="onTestProvider(provider.providerId)"
+              >
+                Test
               </UButton>
             </div>
-          </UFormField>
-        </div>
-      </template>
-
-      <template #footer>
-        <div class="flex justify-end gap-2">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            @click="modalOpen = false"
-          >
-            Cancel
-          </UButton>
-          <UButton
-            :loading="isSaving"
-            @click="onSave"
-          >
-            Save
-          </UButton>
-        </div>
-      </template>
-    </UModal>
-  </div>
+          </div>
+        </UCard>
+      </div>
+    </div>
+  </UContainer>
 </template>

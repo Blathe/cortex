@@ -1,30 +1,13 @@
 <script setup lang="ts">
-import type { AgentSettings, CortexConfig } from '~/types/cortex'
+import type { AgentSettings } from '~/types/cortex'
 
-type ConfigFormState = Omit<CortexConfig, 'updatedAt'>
-
-const { config, loadConfig } = useCortexConfig()
+const { active, isLiveMode, loadProviders, getProviderById } = useCortexProviders()
 const toast = useToast()
 
-// ── LLM runtime config ────────────────────────────────────────────────────────
-
-const state = reactive<ConfigFormState>({
-  provider: '',
-  model: '',
-  baseUrl: '',
-  apiKeySet: false
+const activeProviderLabel = computed(() => {
+  if (!active.value) return 'unset'
+  return getProviderById(active.value.providerId)?.label ?? active.value.providerId
 })
-
-const lastUpdatedLabel = computed(() => {
-  return new Date(config.value.updatedAt).toLocaleString()
-})
-
-const syncFromConfig = (value: CortexConfig) => {
-  state.provider = value.provider
-  state.model = value.model
-  state.baseUrl = value.baseUrl
-  state.apiKeySet = value.apiKeySet
-}
 
 // ── Security ──────────────────────────────────────────────────────────────────
 
@@ -144,9 +127,10 @@ const onAgentSubmit = async () => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 onMounted(async () => {
-  const loadedConfig = loadConfig()
-  syncFromConfig(loadedConfig)
-  loadAgentSettings()
+  await Promise.all([
+    loadProviders().catch(() => {}),
+    loadAgentSettings()
+  ])
 })
 </script>
 
@@ -378,22 +362,26 @@ onMounted(async () => {
 
             <div class="space-y-3">
               <div class="flex items-center justify-between gap-2">
-                <span class="text-sm text-muted">LLM last saved</span>
-                <span class="text-xs text-highlighted">{{ lastUpdatedLabel }}</span>
-              </div>
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-sm text-muted">Provider</span>
+                <span class="text-sm text-muted">LLM Provider</span>
                 <UBadge
-                  :label="state.provider || 'unset'"
+                  :label="activeProviderLabel"
                   color="neutral"
                   variant="subtle"
                 />
               </div>
               <div class="flex items-center justify-between gap-2">
-                <span class="text-sm text-muted">Mode</span>
+                <span class="text-sm text-muted">LLM Model</span>
                 <UBadge
-                  :label="state.apiKeySet ? 'Live API' : 'Mock'"
-                  :color="state.apiKeySet ? 'success' : 'warning'"
+                  :label="active?.modelId || 'unset'"
+                  color="neutral"
+                  variant="subtle"
+                />
+              </div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm text-muted">LLM Mode</span>
+                <UBadge
+                  :label="isLiveMode ? 'Live API' : 'Mock'"
+                  :color="isLiveMode ? 'success' : 'warning'"
                   variant="subtle"
                 />
               </div>

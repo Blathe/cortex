@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import type { StepperItem } from '@nuxt/ui'
+import type { ProviderId } from '~/types/cortex'
 
-const { addProvider, setActive } = useCortexProviders()
+const { catalog, loadProviders, setActive, saveCredential, validateConnection, getProviderById } = useCortexProviders()
 const { saveToken } = useCortexAuth()
 
 const currentStep = ref<number>(0)
 const isDone = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
-const ONBOARDING_STATE_KEY = 'cortex.onboarding.state.v1'
+const ONBOARDING_STATE_KEY = 'cortex.onboarding.state.v2'
 const ONBOARDED_CACHE_KEY = 'cortex.onboarded'
 const MAX_STEP = 4
 
@@ -20,10 +21,9 @@ const generatedToken = ref('')
 
 // Step 2 — LLM Provider
 const providerForm = reactive({
-  name: 'OpenAI',
-  baseUrl: 'https://api.openai.com/v1',
-  apiKey: '',
-  model: 'gpt-4o'
+  providerId: 'openai' as ProviderId,
+  modelId: 'gpt-4o-mini',
+  apiKey: ''
 })
 
 // Step 3 — GitHub
@@ -64,9 +64,8 @@ interface OnboardingDraft {
   currentStep: number
   tokenMode: 'generate' | 'paste'
   provider: {
-    name: string
-    baseUrl: string
-    model: string
+    providerId: ProviderId
+    modelId: string
   }
   github: {
     ghRepo: string
@@ -84,9 +83,8 @@ const buildDraft = (): OnboardingDraft => ({
   currentStep: currentStep.value,
   tokenMode: tokenMode.value,
   provider: {
-    name: providerForm.name,
-    baseUrl: providerForm.baseUrl,
-    model: providerForm.model
+    providerId: providerForm.providerId,
+    modelId: providerForm.modelId
   },
   github: {
     ghRepo: githubForm.ghRepo
@@ -108,6 +106,42 @@ const clearDraft = () => {
   sessionStorage.removeItem(ONBOARDING_STATE_KEY)
 }
 
+const isProviderId = (value: unknown): value is ProviderId => {
+  return value === 'openai' || value === 'anthropic' || value === 'groq'
+}
+
+const providerItems = computed(() =>
+  catalog.value.map(provider => ({ label: provider.label, value: provider.providerId }))
+)
+
+const selectedProvider = computed(() => getProviderById(providerForm.providerId))
+
+const modelItems = computed(() =>
+  (selectedProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
+)
+
+const applyProviderDefaults = () => {
+  const first = catalog.value[0]
+  if (!first) {
+    return
+  }
+
+  const currentProvider = getProviderById(providerForm.providerId)
+  if (!currentProvider) {
+    providerForm.providerId = first.providerId
+  }
+
+  const provider = getProviderById(providerForm.providerId)
+  if (!provider) {
+    return
+  }
+
+  const modelAllowed = provider.models.some(model => model.id === providerForm.modelId)
+  if (!modelAllowed) {
+    providerForm.modelId = provider.defaultModel
+  }
+}
+
 const restoreDraft = () => {
   if (!import.meta.client) return
   const raw = sessionStorage.getItem(ONBOARDING_STATE_KEY)
@@ -117,9 +151,12 @@ const restoreDraft = () => {
     const parsed = JSON.parse(raw) as Partial<OnboardingDraft>
     currentStep.value = clampStep(Number(parsed.currentStep ?? 0))
     tokenMode.value = parsed.tokenMode === 'paste' ? 'paste' : 'generate'
-    providerForm.name = parsed.provider?.name ?? providerForm.name
-    providerForm.baseUrl = parsed.provider?.baseUrl ?? providerForm.baseUrl
-    providerForm.model = parsed.provider?.model ?? providerForm.model
+    if (isProviderId(parsed.provider?.providerId)) {
+      providerForm.providerId = parsed.provider.providerId
+    }
+    if (typeof parsed.provider?.modelId === 'string' && parsed.provider.modelId.trim()) {
+      providerForm.modelId = parsed.provider.modelId.trim()
+    }
     githubForm.ghRepo = parsed.github?.ghRepo ?? githubForm.ghRepo
     personaForm.name = parsed.persona?.name ?? personaForm.name
     personaForm.tone = parsed.persona?.tone ?? personaForm.tone
@@ -131,10 +168,10 @@ const restoreDraft = () => {
 
 const normalizeRestoredStep = async () => {
   if (currentStep.value <= 1) return
-  const authorized = await $fetch('/api/agent/providers')
-    .then(() => true)
-    .catch(() => false)
-  if (!authorized) {
+  try {
+    await loadProviders()
+    applyProviderDefaults()
+  } catch {
     currentStep.value = 1
   }
 }
@@ -168,14 +205,17 @@ const goNext = async () => {
   try {
     if (currentStep.value === 1) {
       await authenticateSession()
+      await loadProviders()
+      applyProviderDefaults()
     } else if (currentStep.value === 2) {
-      const id = await addProvider({
-        name: providerForm.name,
-        baseUrl: providerForm.baseUrl,
-        apiKey: providerForm.apiKey,
-        models: [providerForm.model]
-      })
-      await setActive(id)
+      const apiKey = providerForm.apiKey.trim()
+      await validateConnection(providerForm.providerId, providerForm.modelId, apiKey || undefined)
+
+      if (apiKey) {
+        await saveCredential(providerForm.providerId, apiKey)
+      }
+
+      await setActive(providerForm.providerId, providerForm.modelId)
     } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
@@ -237,9 +277,17 @@ const goBack = () => {
   }
 }
 
+watch(() => providerForm.providerId, () => {
+  applyProviderDefaults()
+})
+
 onMounted(async () => {
   restoreDraft()
   await normalizeRestoredStep()
+  if (currentStep.value >= 2 && !catalog.value.length) {
+    await loadProviders().catch(() => {})
+    applyProviderDefaults()
+  }
 })
 </script>
 
@@ -419,20 +467,22 @@ onMounted(async () => {
               LLM Provider
             </h2>
             <p class="mb-6 text-sm text-muted">
-              Configure the AI model Cortex will use for chat.
+              Select a provider and model from the supported catalog. Base URLs are managed automatically.
             </p>
             <div class="space-y-4">
-              <UFormField label="Provider Name">
-                <UInput
-                  v-model="providerForm.name"
-                  placeholder="e.g. OpenAI"
+              <UFormField label="Provider">
+                <USelect
+                  v-model="providerForm.providerId"
+                  :items="providerItems"
+                  value-key="value"
                   class="w-full"
                 />
               </UFormField>
-              <UFormField label="Base URL">
-                <UInput
-                  v-model="providerForm.baseUrl"
-                  placeholder="https://api.openai.com/v1"
+              <UFormField label="Model">
+                <USelect
+                  v-model="providerForm.modelId"
+                  :items="modelItems"
+                  value-key="value"
                   class="w-full"
                 />
               </UFormField>
@@ -444,13 +494,10 @@ onMounted(async () => {
                   class="w-full"
                 />
               </UFormField>
-              <UFormField label="Default Model">
-                <UInput
-                  v-model="providerForm.model"
-                  placeholder="gpt-4o"
-                  class="w-full"
-                />
-              </UFormField>
+              <p class="text-xs text-muted">
+                Selected provider endpoint:
+                <code>{{ selectedProvider?.baseUrl || 'unavailable' }}</code>
+              </p>
             </div>
           </div>
 

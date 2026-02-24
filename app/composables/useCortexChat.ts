@@ -43,10 +43,6 @@ const pickReply = (prompt: string): string => {
     ?? 'Mock response unavailable.'
 }
 
-const normalizeProvider = (provider: string) => {
-  return provider.toLowerCase().replace(/\s+/g, '')
-}
-
 const getFetchErrorMessage = (error: unknown, fallback: string) => {
   const fetchError = error as {
     data?: {
@@ -67,7 +63,7 @@ const getFetchErrorMessage = (error: unknown, fallback: string) => {
 }
 
 export const useCortexChat = () => {
-  const { config, loadConfig } = useCortexConfig()
+  const { active, isLiveMode, loadProviders, loaded } = useCortexProviders()
   const messages = useState<CortexChatMessage[]>('cortex.chat.messages', () => [
     buildMessage('assistant', INITIAL_MESSAGE)
   ])
@@ -136,26 +132,32 @@ export const useCortexChat = () => {
     }, 550)
   }
 
-  const resolveActiveConfig = () => {
-    if (import.meta.client) {
-      return loadConfig()
+  const ensureProviderState = async () => {
+    if (loaded.value) {
+      return
     }
 
-    return config.value
+    try {
+      await loadProviders()
+    } catch {
+      // Keep mock mode when provider state cannot be loaded.
+    }
   }
 
-  const shouldUseLiveApi = () => {
-    const activeConfig = resolveActiveConfig()
-    return normalizeProvider(activeConfig.provider) === 'openai' && activeConfig.apiKeySet
+  const shouldUseLiveApi = async () => {
+    await ensureProviderState()
+    if (!active.value) {
+      return false
+    }
+    return isLiveMode.value
   }
 
   const requestAssistantReply = async (promptText: string) => {
-    if (!shouldUseLiveApi()) {
+    if (!await shouldUseLiveApi()) {
       simulateAssistantReply(promptText)
       return
     }
 
-    const activeConfig = resolveActiveConfig()
     lastError.value = null
     setStreamingState()
     abortActiveRequest()
@@ -165,11 +167,7 @@ export const useCortexChat = () => {
       const response = await $fetch<ChatApiResponse>('/api/chat', {
         method: 'POST',
         signal: activeRequestController.signal,
-        body: {
-          prompt: promptText,
-          provider: activeConfig.provider,
-          model: activeConfig.model
-        }
+        body: { prompt: promptText }
       })
 
       messages.value = [...messages.value, buildMessage('assistant', response.text, response.configProposal)]
@@ -177,9 +175,6 @@ export const useCortexChat = () => {
     } catch (error) {
       const fetchError = error as {
         name?: string
-        status?: number
-        statusCode?: number
-        statusMessage?: string
       }
 
       if (fetchError?.name === 'AbortError') {
@@ -187,7 +182,7 @@ export const useCortexChat = () => {
         return
       }
 
-      lastError.value = getFetchErrorMessage(error, 'Failed to contact OpenAI.')
+      lastError.value = getFetchErrorMessage(error, 'Failed to contact provider API.')
       status.value = 'error'
     } finally {
       clearTimers()

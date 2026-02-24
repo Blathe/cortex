@@ -11,19 +11,20 @@ const {
   retryLastResponse,
   clearProposal
 } = useCortexChat()
-const { config, loadConfig } = useCortexConfig()
+const { active, isLiveMode, loadProviders, getProviderById } = useCortexProviders()
 const toast = useToast()
 
-const isLiveMode = computed(() => {
-  return config.value.provider.toLowerCase().replace(/\s+/g, '') === 'openai' && config.value.apiKeySet
+const activeProviderLabel = computed(() => {
+  if (!active.value) return 'Mock'
+  return getProviderById(active.value.providerId)?.label ?? active.value.providerId
 })
 
 const activeModel = computed(() => {
-  return config.value.model.trim() || 'not set'
+  return active.value?.modelId || 'not set'
 })
 
 const chatRuntimeLabel = computed(() => {
-  return `${activeModel.value}`
+  return `${activeProviderLabel.value} · ${activeModel.value}`
 })
 
 const promptError = computed<Error | undefined>(() => {
@@ -107,7 +108,7 @@ const onRetryLastResponse = () => {
 }
 
 onMounted(() => {
-  loadConfig()
+  loadProviders().catch(() => {})
 })
 </script>
 

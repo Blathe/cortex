@@ -1,87 +1,102 @@
-import type { CortexProvider } from '~/types/cortex'
-
-// Input type for create/update — apiKey is the real secret (sent to server once, never stored client-side)
-export interface ProviderInput {
-  name: string
-  baseUrl: string
-  apiKey?: string
-  models: string[]
-}
+import type {
+  ProviderCatalogEntry,
+  ProviderCredentialStatus,
+  ProviderId,
+  ProviderMigrationWarning,
+  ProviderRuntimeState
+} from '~/types/cortex'
 
 interface ProvidersGetResponse {
-  providers: CortexProvider[]
-  activeId: string | null
+  catalog: ProviderCatalogEntry[]
+  credentials: Record<ProviderId, ProviderCredentialStatus>
+  active: ProviderRuntimeState | null
+  migrationWarnings: ProviderMigrationWarning[]
 }
 
-interface ProviderPostResponse {
+interface ValidateProviderResponse {
   ok: boolean
-  id: string
+  mode: 'live' | 'mock'
+  message?: string
 }
 
 export const useCortexProviders = () => {
-  const providers = useState<CortexProvider[]>('cortex.providers', () => [])
-  const activeProviderId = useState<string | null>('cortex.providers.active', () => null)
+  const catalog = useState<ProviderCatalogEntry[]>('cortex.providers.catalog', () => [])
+  const credentials = useState<Record<ProviderId, ProviderCredentialStatus>>('cortex.providers.credentials', () => ({
+    openai: { configured: false },
+    anthropic: { configured: false },
+    groq: { configured: false }
+  }))
+  const active = useState<ProviderRuntimeState | null>('cortex.providers.active', () => null)
+  const migrationWarnings = useState<ProviderMigrationWarning[]>('cortex.providers.warnings', () => [])
+  const loaded = useState<boolean>('cortex.providers.loaded', () => false)
 
   const loadProviders = async () => {
     const res = await $fetch<ProvidersGetResponse>('/api/agent/providers')
-    providers.value = res.providers
-    activeProviderId.value = res.activeId
+    catalog.value = res.catalog
+    credentials.value = res.credentials
+    active.value = res.active
+    migrationWarnings.value = res.migrationWarnings
+    loaded.value = true
   }
 
-  const addProvider = async (input: ProviderInput) => {
-    const res = await $fetch<ProviderPostResponse>('/api/agent/providers', {
+  const setActive = async (providerId: ProviderId, modelId: string) => {
+    const res = await $fetch<{ ok: boolean, active: ProviderRuntimeState }>('/api/agent/providers/active', {
       method: 'POST',
-      body: input
+      body: { providerId, modelId }
     })
-    await loadProviders()
-    return res.id
+    active.value = res.active
+    return res.active
   }
 
-  const updateProvider = async (id: string, patch: Partial<ProviderInput>) => {
-    await $fetch('/api/agent/providers', {
+  const saveCredential = async (providerId: ProviderId, apiKey: string) => {
+    const res = await $fetch<{ ok: boolean, providerId: ProviderId, configured: boolean }>('/api/agent/providers/credentials', {
       method: 'POST',
-      body: { id, ...patch }
+      body: { providerId, apiKey }
     })
-    await loadProviders()
-  }
 
-  const deleteProvider = async (id: string) => {
-    await $fetch(`/api/agent/providers/${id}`, {
-      method: 'DELETE'
-    })
-    providers.value = providers.value.filter(p => p.id !== id)
-    if (activeProviderId.value === id) {
-      activeProviderId.value = providers.value[0]?.id ?? null
+    credentials.value = {
+      ...credentials.value,
+      [providerId]: { configured: res.configured }
     }
+
+    return res
   }
 
-  const setActive = async (id: string) => {
-    const provider = providers.value.find(p => p.id === id)
-    if (!provider) return
-
-    await $fetch('/api/agent/providers', {
+  const validateConnection = async (providerId: ProviderId, modelId: string, apiKey?: string) => {
+    return $fetch<ValidateProviderResponse>('/api/agent/providers/validate', {
       method: 'POST',
-      body: { id, name: provider.name, baseUrl: provider.baseUrl, models: provider.models, setActive: true }
-    })
-
-    activeProviderId.value = id
-
-    const { saveConfig, config } = useCortexConfig()
-    saveConfig({
-      provider: provider.name,
-      model: config.value.model,
-      baseUrl: provider.baseUrl,
-      apiKeySet: provider.apiKeySet
+      body: { providerId, modelId, ...(apiKey !== undefined ? { apiKey } : {}) }
     })
   }
+
+  const getProviderById = (providerId: ProviderId) => {
+    return catalog.value.find(provider => provider.providerId === providerId)
+  }
+
+  const getModelLabel = (providerId: ProviderId, modelId: string) => {
+    const provider = getProviderById(providerId)
+    return provider?.models.find(model => model.id === modelId)?.label ?? modelId
+  }
+
+  const isLiveMode = computed(() => {
+    if (!active.value) {
+      return false
+    }
+    return credentials.value[active.value.providerId]?.configured === true
+  })
 
   return {
-    providers,
-    activeProviderId,
+    catalog,
+    credentials,
+    active,
+    migrationWarnings,
+    loaded,
+    isLiveMode,
     loadProviders,
-    addProvider,
-    updateProvider,
-    deleteProvider,
-    setActive
+    setActive,
+    saveCredential,
+    validateConnection,
+    getProviderById,
+    getModelLabel
   }
 }

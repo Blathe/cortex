@@ -21,20 +21,35 @@ export interface CortexChatMessage {
   configProposal?: AgentConfigProposal
 }
 
-export interface CortexConfig {
-  provider: string
-  model: string
-  baseUrl: string
-  apiKeySet: boolean
-  updatedAt: string
+export type ProviderId = 'openai' | 'anthropic' | 'groq'
+
+export interface ProviderModelEntry {
+  id: string
+  label: string
 }
 
-export interface CortexProvider {
-  id: string
-  name: string
+export interface ProviderCatalogEntry {
+  providerId: ProviderId
+  label: string
   baseUrl: string
-  apiKeySet: boolean
-  models: string[]
+  authStrategy: 'bearer' | 'x-api-key'
+  defaultModel: string
+  models: ProviderModelEntry[]
+}
+
+export interface ProviderRuntimeState {
+  providerId: ProviderId
+  modelId: string
+}
+
+export interface ProviderCredentialStatus {
+  configured: boolean
+}
+
+export interface ProviderMigrationWarning {
+  legacyId: string
+  legacyName: string
+  reason: string
 }
 
 export type JobStatus = 'running' | 'completed' | 'failed' | 'pending'
