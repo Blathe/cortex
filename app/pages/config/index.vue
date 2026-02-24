@@ -5,6 +5,7 @@ import type { AgentSettings, CortexConfig } from '~/types/cortex'
 type ConfigFormState = Omit<CortexConfig, 'updatedAt'>
 
 const { config, loadConfig, saveConfig, resetConfig } = useCortexConfig()
+const { token, saveToken, authHeaders } = useCortexAuth()
 const toast = useToast()
 
 // ── LLM runtime config ────────────────────────────────────────────────────────
@@ -73,6 +74,40 @@ const onReset = () => {
   })
 }
 
+// ── Security ──────────────────────────────────────────────────────────────────
+
+const tokenGenerating = ref(false)
+const showRegenerateWarning = ref(false)
+
+const onGenerateToken = async () => {
+  tokenGenerating.value = true
+  showRegenerateWarning.value = false
+  try {
+    const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', {
+      method: 'POST'
+    })
+    saveToken(newToken)
+    toast.add({ title: 'Token generated', color: 'success' })
+  } catch {
+    toast.add({ title: 'Failed to generate token', color: 'error' })
+  } finally {
+    tokenGenerating.value = false
+  }
+}
+
+const onCopyToken = async () => {
+  if (!token.value) return
+  await navigator.clipboard.writeText(token.value)
+  toast.add({ title: 'Token copied to clipboard', color: 'success' })
+}
+
+const loadTokenFromServer = async () => {
+  try {
+    const { token: serverToken } = await $fetch<{ token: string | null }>('/api/agent/auth/token')
+    if (serverToken) saveToken(serverToken)
+  } catch { /* non-critical */ }
+}
+
 // ── Agent behavior settings ───────────────────────────────────────────────────
 
 const agentSettings = ref<AgentSettings | null>(null)
@@ -119,7 +154,9 @@ const syncFromAgentSettings = (settings: AgentSettings) => {
 
 const loadAgentSettings = async () => {
   try {
-    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config')
+    const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config', {
+      headers: authHeaders.value
+    })
     agentSettings.value = settings
     syncFromAgentSettings(settings)
   } catch {
@@ -147,6 +184,7 @@ const onAgentSubmit = async () => {
     }
     const { settings } = await $fetch<{ settings: AgentSettings }>('/api/agent/config', {
       method: 'POST',
+      headers: authHeaders.value,
       body: { patch, reason: 'Updated via config UI', source: 'user' }
     })
     agentSettings.value = settings
@@ -164,6 +202,7 @@ const onAgentSubmit = async () => {
 onMounted(() => {
   const loadedConfig = loadConfig()
   syncFromConfig(loadedConfig)
+  loadTokenFromServer()
   loadAgentSettings()
 })
 </script>
@@ -403,6 +442,71 @@ onMounted(() => {
                   @click="onAgentSubmit"
                 >
                   Save agent settings
+                </UButton>
+              </div>
+            </div>
+          </UCard>
+          <!-- Security -->
+          <UCard>
+            <template #header>
+              <div class="space-y-1">
+                <p class="text-sm font-medium text-highlighted">
+                  Security
+                </p>
+                <p class="text-xs text-muted">
+                  Generate a token to authenticate requests to <code>/api/agent/*</code> endpoints. Once set, all requests require this token.
+                </p>
+              </div>
+            </template>
+
+            <div class="space-y-4">
+              <UFormField
+                label="API Token"
+                :help="token ? 'Include this as an Authorization: Bearer header in API requests.' : 'No token generated yet. All agent API endpoints are currently open.'"
+              >
+                <div class="flex gap-2">
+                  <UInput
+                    :model-value="token ?? ''"
+                    readonly
+                    class="flex-1 font-mono text-xs"
+                    placeholder="No token generated"
+                  />
+                  <UButton
+                    icon="i-lucide-copy"
+                    color="neutral"
+                    variant="ghost"
+                    aria-label="Copy token"
+                    :disabled="!token"
+                    @click="onCopyToken"
+                  />
+                </div>
+              </UFormField>
+
+              <UAlert
+                v-if="showRegenerateWarning"
+                color="warning"
+                icon="i-lucide-triangle-alert"
+                title="This will invalidate the current token immediately."
+                description="Any other sessions or scripts using the old token will stop working."
+              />
+
+              <div class="flex justify-end">
+                <UButton
+                  :loading="tokenGenerating"
+                  :color="token ? 'neutral' : 'primary'"
+                  :variant="token ? 'outline' : 'solid'"
+                  @click="token ? (showRegenerateWarning = true) : onGenerateToken()"
+                >
+                  {{ token ? 'Regenerate token' : 'Generate token' }}
+                </UButton>
+                <UButton
+                  v-if="showRegenerateWarning"
+                  color="error"
+                  class="ml-2"
+                  :loading="tokenGenerating"
+                  @click="onGenerateToken"
+                >
+                  Confirm regenerate
                 </UButton>
               </div>
             </div>

@@ -3,7 +3,12 @@ import { h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 import type { AgentChangeLog } from '~/types/cortex'
 
-const { data: changeLogData, pending } = await useFetch('/api/agent/logs')
+const { authHeaders } = useCortexAuth()
+const { data: changeLogData, pending } = await useAsyncData(
+  'agent-logs',
+  () => $fetch('/api/agent/logs', { headers: authHeaders.value }),
+  { server: false }
+)
 const changeLogs = computed<AgentChangeLog[]>(() => changeLogData.value?.logs ?? [])
 
 const formatDate = (iso: string) => {
