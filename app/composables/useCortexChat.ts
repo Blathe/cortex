@@ -27,14 +27,6 @@ interface ChatApiResponse {
   configProposal?: AgentConfigProposal
 }
 
-interface OpenAIChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string | Array<{ type?: string, text?: string }>
-    }
-  }>
-}
-
 const pickReply = (prompt: string): string => {
   const normalized = prompt.toLowerCase()
 
@@ -53,24 +45,6 @@ const pickReply = (prompt: string): string => {
 
 const normalizeProvider = (provider: string) => {
   return provider.toLowerCase().replace(/\s+/g, '')
-}
-
-const extractOpenAIText = (response: OpenAIChatCompletionResponse) => {
-  const content = response?.choices?.[0]?.message?.content
-
-  if (typeof content === 'string') {
-    return content.trim()
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .filter(part => part?.type === 'text' && typeof part.text === 'string')
-      .map(part => part.text?.trim())
-      .filter(Boolean)
-      .join('\n')
-  }
-
-  return ''
 }
 
 const getFetchErrorMessage = (error: unknown, fallback: string) => {
@@ -213,40 +187,6 @@ export const useCortexChat = () => {
       if (fetchError?.name === 'AbortError') {
         status.value = 'ready'
         return
-      }
-
-      const isApiRouteMissing = fetchError?.status === 404 || fetchError?.statusCode === 404
-
-      if (import.meta.client && isApiRouteMissing) {
-        try {
-          const response = await $fetch<OpenAIChatCompletionResponse>(`${activeConfig.baseUrl.replace(/\/$/, '')}/chat/completions`, {
-            method: 'POST',
-            signal: activeRequestController.signal,
-            headers: {
-              'Authorization': `Bearer ${activeConfig.apiKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: {
-              model: activeConfig.model,
-              messages: [
-                { role: 'user', content: promptText }
-              ]
-            }
-          })
-
-          const text = extractOpenAIText(response)
-          if (!text) {
-            throw new Error('OpenAI returned an empty response.')
-          }
-
-          appendAssistantMessage(text)
-          status.value = 'ready'
-          return
-        } catch (fallbackError) {
-          lastError.value = getFetchErrorMessage(fallbackError, 'Failed to contact OpenAI.')
-          status.value = 'error'
-          return
-        }
       }
 
       lastError.value = getFetchErrorMessage(error, 'Failed to contact OpenAI.')
