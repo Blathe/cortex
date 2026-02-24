@@ -20,11 +20,18 @@ const onGenerateToken = async () => {
   showRegenerateWarning.value = false
   newlyGeneratedToken.value = null
   try {
-    const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', { method: 'POST' })
+    const { token: newToken } = await $fetch<{ token?: string }>('/api/agent/auth/generate', {
+      method: 'POST',
+      body: { revealToken: true }
+    })
     // Token is stored in an HttpOnly cookie by the server.
     // Display it once here so the user can copy it for CLI/API use.
-    newlyGeneratedToken.value = newToken
-    toast.add({ title: 'Token generated', color: 'success' })
+    if (newToken) {
+      newlyGeneratedToken.value = newToken
+      toast.add({ title: 'Token generated', color: 'success' })
+    } else {
+      toast.add({ title: 'Session refreshed', color: 'success' })
+    }
   } catch {
     toast.add({ title: 'Failed to generate token', color: 'error' })
   } finally {

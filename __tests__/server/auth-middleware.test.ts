@@ -3,6 +3,7 @@ import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readToken } from '../../server/utils/authToken'
+import { createSessionCookieValue } from '../../server/utils/authSession'
 import handler from '../../server/middleware/auth'
 
 vi.mock('../../server/utils/authToken')
@@ -76,10 +77,28 @@ describe('auth middleware — token enforcement', () => {
   })
 
   it('allows /api/agent/config with valid session cookie', () => {
+    const session = createSessionCookieValue('configured-token')
     const event = createMockEvent('/api/agent/config', 'GET', {
-      cookie: 'cortex_auth=configured-token'
+      cookie: `cortex_auth=${session}`
     })
     expect(() => handler(event)).not.toThrow()
+  })
+
+  it('blocks /api/agent/config with expired session cookie', () => {
+    const expiredSession = createSessionCookieValue('configured-token', 0, 60)
+    const event = createMockEvent('/api/agent/config', 'GET', {
+      cookie: `cortex_auth=${expiredSession}`
+    })
+    expect(() => handler(event)).toThrow()
+  })
+
+  it('blocks /api/agent/config with session signed by a previous token after rotation', () => {
+    const staleSession = createSessionCookieValue('old-token')
+    vi.mocked(readToken).mockReturnValue('configured-token')
+    const event = createMockEvent('/api/agent/config', 'GET', {
+      cookie: `cortex_auth=${staleSession}`
+    })
+    expect(() => handler(event)).toThrow()
   })
 
   it('returns 401 status for unauthorized requests', () => {

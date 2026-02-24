@@ -192,11 +192,12 @@ const authenticateSession = async () => {
     headers['x-cortex-setup-secret'] = secret
   }
 
-  const res = await $fetch<{ token: string }>('/api/agent/auth/generate', {
+  const res = await $fetch<{ token?: string }>('/api/agent/auth/generate', {
     method: 'POST',
-    headers
+    headers,
+    body: { revealToken: false }
   })
-  generatedToken.value = res.token
+  generatedToken.value = res.token ?? ''
 }
 
 const goNext = async () => {

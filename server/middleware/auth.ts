@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, getCookie, getHeader } from 'h3'
 import { readToken } from '../utils/authToken'
+import { setSessionCookie, validateSessionCookieValue } from '../utils/authSession'
 
 export default defineEventHandler((event) => {
   // Only guard agent endpoints
@@ -21,11 +22,20 @@ export default defineEventHandler((event) => {
     })
   }
 
-  // Accept Bearer token (for API/CLI clients) or HttpOnly cookie (for browser)
+  // Session-first auth:
+  // - Bearer token is still accepted for CLI/API clients
+  // - Browser auth uses a signed session cookie with rolling expiration
   const header = getHeader(event, 'authorization')
   const cookie = getCookie(event, 'cortex_auth')
 
-  if (header === `Bearer ${stored}` || cookie === stored) return
+  if (header === `Bearer ${stored}`) return
+
+  const session = validateSessionCookieValue(cookie, stored)
+  if (session.valid) {
+    // Rolling session expiration for active browser sessions.
+    setSessionCookie(event, stored)
+    return
+  }
 
   throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 })
