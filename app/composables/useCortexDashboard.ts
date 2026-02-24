@@ -45,5 +45,5 @@ export const useCortexDashboard = () => {
     return loaded
   }
 
-  return { prefs, save, loadAndApply }
+  return { prefs, load, apply, save, loadAndApply }
 }
