@@ -45,7 +45,7 @@ describe('POST /api/agent/providers/credentials', () => {
     expect(res.status).toBe(400)
   })
 
-  it('stores a valid api key and reports configured=true', async () => {
+  it('stores a valid api key and reports configured=true with masked preview', async () => {
     const handle = makeApp()
     const res = await post(handle, { providerId: 'openai', apiKey: '  sk-test  ' })
     expect(res.status).toBe(200)
@@ -53,8 +53,9 @@ describe('POST /api/agent/providers/credentials', () => {
     const payload = vi.mocked(writeProviders).mock.calls[0]?.[0]
     expect(payload.credentials.openai.apiKey).toBe('sk-test')
 
-    const json = await res.json() as { configured: boolean }
+    const json = await res.json() as { configured: boolean, tokenPreview: string | null }
     expect(json.configured).toBe(true)
+    expect(json.tokenPreview).toBe('sk-te...')
   })
 
   it('allows clearing an existing key and reports configured=false', async () => {
@@ -76,7 +77,8 @@ describe('POST /api/agent/providers/credentials', () => {
     const payload = vi.mocked(writeProviders).mock.calls[0]?.[0]
     expect(payload.credentials.openai.apiKey).toBe('')
 
-    const json = await res.json() as { configured: boolean }
+    const json = await res.json() as { configured: boolean, tokenPreview: string | null }
     expect(json.configured).toBe(false)
+    expect(json.tokenPreview).toBeNull()
   })
 })

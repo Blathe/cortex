@@ -2,15 +2,26 @@ import { defineEventHandler } from 'h3'
 import { readProviders } from '../../../utils/providerConfig'
 import { PROVIDER_IDS, getProviderById, type ProviderId } from '../../../utils/providerCatalog'
 
+const toTokenPreview = (apiKey: string): string | null => {
+  const trimmed = apiKey.trim()
+  if (!trimmed) {
+    return null
+  }
+  return `${trimmed.slice(0, 5)}...`
+}
+
 export default defineEventHandler(async () => {
   const config = await readProviders()
 
   const credentials = Object.fromEntries(
     PROVIDER_IDS.map(providerId => [
       providerId,
-      { configured: Boolean(config.credentials[providerId]?.apiKey) }
+      {
+        configured: Boolean(config.credentials[providerId]?.apiKey),
+        tokenPreview: toTokenPreview(config.credentials[providerId]?.apiKey || '')
+      }
     ])
-  ) as Record<ProviderId, { configured: boolean }>
+  ) as Record<ProviderId, { configured: boolean, tokenPreview: string | null }>
 
   return {
     catalog: PROVIDER_IDS.map((providerId) => {

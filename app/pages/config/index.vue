@@ -14,6 +14,8 @@ const activeProviderLabel = computed(() => {
 const tokenGenerating = ref(false)
 const showRegenerateWarning = ref(false)
 const newlyGeneratedToken = ref<string | null>(null)
+const authTokenConfigured = ref(false)
+const authTokenPreview = ref<string | null>(null)
 
 const onGenerateToken = async () => {
   tokenGenerating.value = true
@@ -28,6 +30,8 @@ const onGenerateToken = async () => {
     // Display it once here so the user can copy it for CLI/API use.
     if (newToken) {
       newlyGeneratedToken.value = newToken
+      authTokenConfigured.value = true
+      authTokenPreview.value = `${newToken.slice(0, 5)}...`
       toast.add({ title: 'Token generated', color: 'success' })
     } else {
       toast.add({ title: 'Session refreshed', color: 'success' })
@@ -54,6 +58,10 @@ const automationEnabled = ref(false)
 interface ConfigGetResponse {
   settings: AgentSettings
   automationEnabled: boolean
+  auth: {
+    configured: boolean
+    tokenPreview: string | null
+  }
 }
 
 interface ConfigPostResponse {
@@ -112,9 +120,11 @@ const syncFromAgentSettings = (settings: AgentSettings) => {
 
 const loadAgentSettings = async () => {
   try {
-    const { settings, automationEnabled: enabled } = await $fetch<ConfigGetResponse>('/api/agent/config')
+    const { settings, automationEnabled: enabled, auth } = await $fetch<ConfigGetResponse>('/api/agent/config')
     agentSettings.value = settings
     automationEnabled.value = enabled
+    authTokenConfigured.value = auth.configured
+    authTokenPreview.value = auth.tokenPreview
     syncFromAgentSettings(settings)
   } catch {
     toast.add({ title: 'Could not load agent settings', color: 'error' })
@@ -385,6 +395,28 @@ onMounted(async () => {
             </template>
 
             <div class="space-y-4">
+              <UFormField
+                label="Current API token"
+                help="Masked preview only."
+              >
+                <UInput
+                  :model-value="authTokenConfigured ? (authTokenPreview || 'set') : 'not configured'"
+                  icon="i-lucide-key-round"
+                  readonly
+                  disabled
+                  class="font-mono text-xs"
+                />
+              </UFormField>
+
+              <UAlert
+                v-if="authTokenConfigured"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-info"
+                title="Token visibility notice"
+                description="You have already been shown this token. If you lose it, generate a new token and update any applications still using the old token."
+              />
+
               <UAlert
                 v-if="newlyGeneratedToken"
                 color="success"

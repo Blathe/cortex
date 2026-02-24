@@ -22,9 +22,9 @@ interface ValidateProviderResponse {
 export const useCortexProviders = () => {
   const catalog = useState<ProviderCatalogEntry[]>('cortex.providers.catalog', () => [])
   const credentials = useState<Record<ProviderId, ProviderCredentialStatus>>('cortex.providers.credentials', () => ({
-    openai: { configured: false },
-    anthropic: { configured: false },
-    groq: { configured: false }
+    openai: { configured: false, tokenPreview: null },
+    anthropic: { configured: false, tokenPreview: null },
+    groq: { configured: false, tokenPreview: null }
   }))
   const active = useState<ProviderRuntimeState | null>('cortex.providers.active', () => null)
   const migrationWarnings = useState<ProviderMigrationWarning[]>('cortex.providers.warnings', () => [])
@@ -49,14 +49,14 @@ export const useCortexProviders = () => {
   }
 
   const saveCredential = async (providerId: ProviderId, apiKey: string) => {
-    const res = await $fetch<{ ok: boolean, providerId: ProviderId, configured: boolean }>('/api/agent/providers/credentials', {
+    const res = await $fetch<{ ok: boolean, providerId: ProviderId, configured: boolean, tokenPreview: string | null }>('/api/agent/providers/credentials', {
       method: 'POST',
       body: { providerId, apiKey }
     })
 
     credentials.value = {
       ...credentials.value,
-      [providerId]: { configured: res.configured }
+      [providerId]: { configured: res.configured, tokenPreview: res.tokenPreview }
     }
 
     return res

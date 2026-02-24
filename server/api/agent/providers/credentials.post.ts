@@ -7,6 +7,14 @@ interface CredentialsPostBody {
   apiKey?: unknown
 }
 
+const toTokenPreview = (apiKey: string): string | null => {
+  const trimmed = apiKey.trim()
+  if (!trimmed) {
+    return null
+  }
+  return `${trimmed.slice(0, 5)}...`
+}
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<CredentialsPostBody>(event)
 
@@ -38,6 +46,7 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true,
     providerId,
-    configured: Boolean(apiKey)
+    configured: Boolean(apiKey),
+    tokenPreview: toTokenPreview(apiKey)
   }
 })
