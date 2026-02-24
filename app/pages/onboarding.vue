@@ -138,7 +138,7 @@ const finishOnboarding = async () => {
       source: 'user'
     }
   })
-  localStorage.setItem('cortex.onboarded', '1')
+  useState<boolean | null>('onboarded').value = true
   isDone.value = true
 }
 
