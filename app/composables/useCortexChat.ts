@@ -33,7 +33,7 @@ interface OpenAIChatCompletionResponse {
   }>
 }
 
-const pickReply = (prompt: string) => {
+const pickReply = (prompt: string): string => {
   const normalized = prompt.toLowerCase()
 
   if (normalized.includes('job') || normalized.includes('log')) {
@@ -44,7 +44,9 @@ const pickReply = (prompt: string) => {
     return 'Configuration fields are editable and saved locally. Backend config sync is planned for a future PR.'
   }
 
-  return quickReplies[Math.floor(Math.random() * quickReplies.length)] ?? quickReplies[0]
+  return quickReplies[Math.floor(Math.random() * quickReplies.length)]
+    ?? quickReplies[0]
+    ?? 'Mock response unavailable.'
 }
 
 const normalizeProvider = (provider: string) => {
