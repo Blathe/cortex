@@ -2,9 +2,8 @@ import { createError, defineEventHandler, readBody } from 'h3'
 import { resolve } from 'node:path'
 import {
   classifyRisk,
-  commitAndPush,
+  commitToBranch,
   createChangeLog,
-  createGitHubPR,
   readSettings,
   validatePatch,
   writeSettings
@@ -38,10 +37,8 @@ export default defineEventHandler(async (event) => {
   const next = writeSettings(patch, source)
   const logFile = createChangeLog(prev, next, source, reason, sessionId, patch)
 
-  const settings = next
-
-  if (!settings.git.autoPush) {
-    return { settings, logFile }
+  if (!next.git.autoPush) {
+    return { settings: next, logFile }
   }
 
   const riskLevel = classifyRisk(patch)
@@ -50,39 +47,13 @@ export default defineEventHandler(async (event) => {
   const commitMessage = `feat(agent): update config — ${reason || 'agent self-configuration'}`
 
   const settingsPath = resolve(process.cwd(), 'agent/config/settings.json')
-  const filesToCommit = [settingsPath, logFile]
-
-  let prUrl: string | undefined
 
   try {
-    await commitAndPush(branch, filesToCommit, commitMessage)
-
-    const label = riskLevel === 'low' ? 'auto-merge' : 'needs-review'
-    const prTitle = `[agent-config] ${reason || 'Behavioral config update'}`
-    const prBody = [
-      `## Config Change`,
-      '',
-      `**Risk level:** ${riskLevel}`,
-      `**Changed by:** ${source}`,
-      `**Session:** ${sessionId}`,
-      '',
-      '### Patch',
-      '',
-      '```json',
-      JSON.stringify(patch, null, 2),
-      '```',
-      '',
-      `### Reason`,
-      '',
-      reason || '(no reason provided)'
-    ].join('\n')
-
-    prUrl = await createGitHubPR(branch, prTitle, prBody, [label])
+    await commitToBranch(branch, [settingsPath, logFile], commitMessage)
   } catch (error) {
     const gitError = error as { message?: string }
-    // Non-fatal: git/PR failure shouldn't block the config write
-    console.warn('[agent/config] git push or PR creation failed:', gitError.message)
+    console.warn('[agent/config] git commit failed:', gitError.message)
   }
 
-  return { settings, logFile, pr: prUrl }
+  return { settings: next, logFile, branch, riskLevel }
 })
