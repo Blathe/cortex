@@ -6,15 +6,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // so the middleware never needs to re-fetch within the same session.
   const onboarded = useState<boolean | null>('onboarded', () => null)
 
-  // Client-only optimistic cache to prevent false redirects during transient
-  // dev-server restarts immediately after finishing onboarding.
-  if (import.meta.client && onboarded.value === null) {
-    const cached = sessionStorage.getItem('cortex.onboarded')
-    if (cached === 'true') {
-      onboarded.value = true
-    }
-  }
-
   if (onboarded.value === null) {
     const data = await $fetch<{ onboarded: boolean }>('/api/agent/onboarding-status').catch(() => null)
     if (typeof data?.onboarded === 'boolean') {
@@ -26,6 +17,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
           sessionStorage.removeItem('cortex.onboarded')
         }
       }
+    } else if (import.meta.client) {
+      // Fetch failed (typically transient during local dev reload). Use the optimistic
+      // session hint if present; otherwise default to not onboarded.
+      onboarded.value = sessionStorage.getItem('cortex.onboarded') === 'true'
+    } else {
+      onboarded.value = false
     }
   }
 

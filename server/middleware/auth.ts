@@ -11,9 +11,15 @@ export default defineEventHandler((event) => {
   // Minimal onboarding check is intentionally public — returns only a boolean
   if (event.path === '/api/agent/onboarding-status') return
 
-  // No token configured — auth is not enabled, allow all requests through
+  // Strict secure default: if token is missing/corrupt, deny protected access.
+  // Bootstrap/auth flows must go through /api/agent/auth/* endpoints above.
   const stored = readToken()
-  if (!stored) return
+  if (!stored) {
+    throw createError({
+      statusCode: 503,
+      statusMessage: 'Authentication is not initialized. Generate a token via /api/agent/auth/generate.'
+    })
+  }
 
   // Accept Bearer token (for API/CLI clients) or HttpOnly cookie (for browser)
   const header = getHeader(event, 'authorization')

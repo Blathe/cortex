@@ -38,10 +38,10 @@ describe('auth middleware — path allowlist', () => {
     expect(() => handler(event)).not.toThrow()
   })
 
-  it('allows all agent paths when no token is configured', () => {
+  it('blocks protected agent paths when no token is configured', () => {
     vi.mocked(readToken).mockReturnValue(null)
     const event = createMockEvent('/api/agent/config')
-    expect(() => handler(event)).not.toThrow()
+    expect(() => handler(event)).toThrowError(expect.objectContaining({ statusCode: 503 }))
   })
 })
 
