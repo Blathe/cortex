@@ -37,7 +37,8 @@ const onGenerateToken = async () => {
   showRegenerateWarning.value = false
   try {
     const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', {
-      method: 'POST'
+      method: 'POST',
+      headers: authHeaders.value
     })
     saveToken(newToken)
     toast.add({ title: 'Token generated', color: 'success' })
@@ -52,13 +53,6 @@ const onCopyToken = async () => {
   if (!token.value) return
   await navigator.clipboard.writeText(token.value)
   toast.add({ title: 'Token copied to clipboard', color: 'success' })
-}
-
-const loadTokenFromServer = async () => {
-  try {
-    const { token: serverToken } = await $fetch<{ token: string | null }>('/api/agent/auth/token')
-    if (serverToken) saveToken(serverToken)
-  } catch { /* non-critical */ }
 }
 
 // ── Agent behavior settings ───────────────────────────────────────────────────
@@ -155,7 +149,6 @@ const onAgentSubmit = async () => {
 onMounted(async () => {
   const loadedConfig = loadConfig()
   syncFromConfig(loadedConfig)
-  await loadTokenFromServer()
   loadAgentSettings()
 })
 </script>
