@@ -321,12 +321,17 @@ onMounted(async () => {
               />
             </UFormField>
 
-            <p
+            <div
               v-else
-              class="text-xs text-muted"
+              class="space-y-1 text-xs text-muted"
             >
-              Token linked. Remove token to unlink this provider.
-            </p>
+              <p>
+                Token: <code>{{ credentials[provider.providerId]?.tokenPreview || 'set' }}</code>
+              </p>
+              <p>
+                Remove token to unlink this provider.
+              </p>
+            </div>
 
             <div class="flex gap-2">
               <UButton

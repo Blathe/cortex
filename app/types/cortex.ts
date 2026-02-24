@@ -44,6 +44,7 @@ export interface ProviderRuntimeState {
 
 export interface ProviderCredentialStatus {
   configured: boolean
+  tokenPreview: string | null
 }
 
 export interface ProviderMigrationWarning {
