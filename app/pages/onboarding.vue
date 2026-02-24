@@ -64,8 +64,8 @@ const handleGenerateToken = async () => {
       method: 'POST',
       headers: authHeaders.value
     })
+    // Server sets an HttpOnly cookie — display the token here for CLI/API backup only.
     generatedToken.value = res.token
-    saveToken(res.token)
   } catch (e) {
     const err = e as { statusMessage?: string }
     error.value = err.statusMessage ?? 'Failed to generate token.'
@@ -79,16 +79,16 @@ const goNext = async () => {
   isLoading.value = true
   try {
     if (currentStep.value === 1) {
-      const id = addProvider({
+      const id = await addProvider({
         name: providerForm.name,
         baseUrl: providerForm.baseUrl,
         apiKey: providerForm.apiKey,
         models: [providerForm.model]
       })
-      setActive(id)
+      await setActive(id)
     } else if (currentStep.value === 2) {
       if (tokenMode.value === 'paste' && pastedToken.value.trim()) {
-        saveToken(pastedToken.value.trim())
+        await saveToken(pastedToken.value.trim())
       }
     } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []

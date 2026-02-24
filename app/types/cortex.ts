@@ -25,7 +25,7 @@ export interface CortexConfig {
   provider: string
   model: string
   baseUrl: string
-  apiKey: string
+  apiKeySet: boolean
   updatedAt: string
 }
 
@@ -33,7 +33,7 @@ export interface CortexProvider {
   id: string
   name: string
   baseUrl: string
-  apiKey: string
+  apiKeySet: boolean
   models: string[]
 }
 

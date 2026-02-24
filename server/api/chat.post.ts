@@ -2,13 +2,12 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createError, defineEventHandler, readBody } from 'h3'
 import { readSettings } from '../utils/agentConfig'
+import { readProviders } from '../utils/providerConfig'
 
 interface ChatRequestBody {
   prompt?: string
   provider?: string
   model?: string
-  baseUrl?: string
-  apiKey?: string
 }
 
 interface OpenAIChatCompletionResponse {
@@ -124,8 +123,6 @@ export default defineEventHandler(async (event) => {
   const prompt = body.prompt?.trim()
   const provider = normalizeProvider(body.provider)
   const model = body.model?.trim()
-  const baseUrl = validateBaseUrl(body.baseUrl?.trim() || DEFAULT_BASE_URL)
-  const apiKey = body.apiKey?.trim()
 
   if (!prompt) {
     throw createError({ statusCode: 400, statusMessage: 'Prompt is required.' })
@@ -139,9 +136,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Model is required.' })
   }
 
-  if (!apiKey) {
-    throw createError({ statusCode: 400, statusMessage: 'API key is required.' })
+  // API key and base URL are read from server-side storage — never accepted from the client
+  const providersCfg = await readProviders()
+  const activeProvider = providersCfg.providers.find(p => p.id === providersCfg.activeId)
+
+  if (!activeProvider?.apiKey) {
+    throw createError({ statusCode: 400, statusMessage: 'No active provider with an API key configured.' })
   }
+
+  const apiKey = activeProvider.apiKey
+  const baseUrl = validateBaseUrl(activeProvider.baseUrl || DEFAULT_BASE_URL)
 
   const settings = await readSettings()
   const rawPrompt = readFileSync(resolve(process.cwd(), 'agent/prompts/SYSTEM_PROMPT.md'), 'utf-8').trim()

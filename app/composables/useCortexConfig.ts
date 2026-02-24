@@ -7,24 +7,32 @@ export const getDefaultCortexConfig = (): CortexConfig => {
     provider: 'openai',
     model: 'gpt-4o-mini',
     baseUrl: 'https://api.openai.com/v1',
-    apiKey: '',
+    apiKeySet: false,
     updatedAt: new Date().toISOString()
   }
 }
 
 const sanitizeConfig = (value: unknown): CortexConfig => {
   const defaults = getDefaultCortexConfig()
-  const maybeConfig = value as Partial<CortexConfig> | null
+  const maybeConfig = value as Partial<CortexConfig & { apiKey?: string }> | null
 
   if (!maybeConfig || typeof maybeConfig !== 'object') {
     return defaults
+  }
+
+  // Migrate from old format where apiKey was a stored string
+  let apiKeySet = defaults.apiKeySet
+  if (typeof maybeConfig.apiKeySet === 'boolean') {
+    apiKeySet = maybeConfig.apiKeySet
+  } else if (typeof maybeConfig.apiKey === 'string') {
+    apiKeySet = maybeConfig.apiKey.trim().length > 0
   }
 
   return {
     provider: typeof maybeConfig.provider === 'string' ? maybeConfig.provider : defaults.provider,
     model: typeof maybeConfig.model === 'string' ? maybeConfig.model : defaults.model,
     baseUrl: typeof maybeConfig.baseUrl === 'string' ? maybeConfig.baseUrl : defaults.baseUrl,
-    apiKey: typeof maybeConfig.apiKey === 'string' ? maybeConfig.apiKey : defaults.apiKey,
+    apiKeySet,
     updatedAt: typeof maybeConfig.updatedAt === 'string' ? maybeConfig.updatedAt : defaults.updatedAt
   }
 }

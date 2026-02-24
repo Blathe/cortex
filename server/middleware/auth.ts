@@ -1,11 +1,11 @@
-import { createError, defineEventHandler, getHeader } from 'h3'
+import { createError, defineEventHandler, getCookie, getHeader } from 'h3'
 import { readToken } from '../utils/authToken'
 
 export default defineEventHandler((event) => {
   // Only guard agent endpoints
   if (!event.path.startsWith('/api/agent/')) return
 
-  // Auth management endpoints are always accessible (token generation)
+  // Auth management endpoints are always accessible (token generation, login)
   if (event.path.startsWith('/api/agent/auth/')) return
 
   // Config reads are not sensitive — needed for SSR middleware to check onboarding status
@@ -15,8 +15,11 @@ export default defineEventHandler((event) => {
   const stored = readToken()
   if (!stored) return
 
+  // Accept Bearer token (for API/CLI clients) or HttpOnly cookie (for browser)
   const header = getHeader(event, 'authorization')
-  if (!header || header !== `Bearer ${stored}`) {
-    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
-  }
+  const cookie = getCookie(event, 'cortex_auth')
+
+  if (header === `Bearer ${stored}` || cookie === stored) return
+
+  throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 })
