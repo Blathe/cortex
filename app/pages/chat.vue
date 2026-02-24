@@ -131,7 +131,25 @@ onMounted(() => {
           :assistant="{ avatar: { src: '/cortex_avatar.png', size: '3xl' }, variant: 'outline' }"
           :spacing-offset="176"
           should-auto-scroll
-        />
+        >
+          <template #content="{ message }">
+            <template
+              v-for="(part, index) in message.parts"
+              :key="`${message.id}-${part.type}-${index}`"
+            >
+              <MarkdownContent
+                v-if="part.type === 'text' && message.role === 'assistant'"
+                :content="part.text"
+              />
+              <p
+                v-else-if="part.type === 'text'"
+                class="whitespace-pre-wrap"
+              >
+                {{ part.text }}
+              </p>
+            </template>
+          </template>
+        </UChatMessages>
       </UContainer>
     </div>
 
