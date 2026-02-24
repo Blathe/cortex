@@ -1,6 +1,9 @@
+import { execFile } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import simpleGit from 'simple-git'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const SETTINGS_PATH = resolve(process.cwd(), 'agent/config/settings.json')
 const LOGS_DIR = resolve(process.cwd(), 'agent/logs')
@@ -190,62 +193,11 @@ export const createChangeLog = (
   return filePath
 }
 
-export const commitAndPush = async (branch: string, files: string[], message: string): Promise<void> => {
-  const git = simpleGit(process.cwd())
-  await git.checkoutLocalBranch(branch)
-  await git.add(files)
-  await git.commit(message)
-  await git.push('origin', branch, ['--set-upstream'])
-}
+const git = (...args: string[]) =>
+  execFileAsync('git', args, { cwd: process.cwd() })
 
-export const createGitHubPR = async (
-  branch: string,
-  title: string,
-  body: string,
-  labels: string[]
-): Promise<string> => {
-  const token = process.env.GH_TOKEN
-  const repo = process.env.GH_REPO
-
-  if (!token || !repo) {
-    throw new Error('GH_TOKEN and GH_REPO env vars are required for PR creation.')
-  }
-
-  const [owner, repoName] = repo.split('/')
-  const response = await $fetch<{ html_url: string }>(`https://api.github.com/repos/${owner}/${repoName}/pulls`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Accept': 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'Content-Type': 'application/json'
-    },
-    body: {
-      title,
-      body,
-      head: branch,
-      base: 'master',
-      labels
-    }
-  })
-
-  const prUrl = response.html_url
-
-  // Add labels to the PR (GitHub requires a separate labels API call for most cases)
-  const prNumber = prUrl.split('/').at(-1)
-  if (prNumber) {
-    await $fetch(`https://api.github.com/repos/${owner}/${repoName}/issues/${prNumber}/labels`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28'
-      },
-      body: { labels }
-    }).catch(() => {
-      // Non-fatal: labels may not exist yet
-    })
-  }
-
-  return prUrl
+export const commitToBranch = async (branch: string, files: string[], message: string): Promise<void> => {
+  await git('checkout', '-b', branch)
+  await git('add', ...files)
+  await git('commit', '-m', message)
 }
