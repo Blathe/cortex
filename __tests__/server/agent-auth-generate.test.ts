@@ -102,4 +102,24 @@ describe('POST /api/agent/auth/generate — token rotation (existing token)', ()
     const res = await post(handle, { cookie: 'cortex_auth=existing-token' })
     expect(res.status).toBe(200)
   })
+
+  it('rejects rotation when setup secret header is provided but invalid', async () => {
+    process.env.CORTEX_SETUP_SECRET = 'correct-secret'
+    const handle = makeApp()
+    const res = await post(handle, {
+      'authorization': 'Bearer existing-token',
+      'x-cortex-setup-secret': 'wrong-secret'
+    })
+    expect(res.status).toBe(403)
+  })
+
+  it('allows rotation when setup secret header is provided and valid', async () => {
+    process.env.CORTEX_SETUP_SECRET = 'correct-secret'
+    const handle = makeApp()
+    const res = await post(handle, {
+      'authorization': 'Bearer existing-token',
+      'x-cortex-setup-secret': 'correct-secret'
+    })
+    expect(res.status).toBe(200)
+  })
 })

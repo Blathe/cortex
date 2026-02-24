@@ -2,7 +2,7 @@ import { createEvent } from 'h3'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { consumeFirstRun, readToken } from '../../server/utils/authToken'
+import { readToken } from '../../server/utils/authToken'
 import handler from '../../server/middleware/auth'
 
 vi.mock('../../server/utils/authToken')
@@ -16,7 +16,6 @@ const createMockEvent = (path: string, method = 'GET', headers: Record<string, s
 describe('auth middleware — path allowlist', () => {
   beforeEach(() => {
     vi.mocked(readToken).mockReturnValue(null)
-    vi.mocked(consumeFirstRun).mockReturnValue(false)
   })
 
   it('passes non-agent paths through', () => {
@@ -49,7 +48,6 @@ describe('auth middleware — path allowlist', () => {
 describe('auth middleware — token enforcement', () => {
   beforeEach(() => {
     vi.mocked(readToken).mockReturnValue('configured-token')
-    vi.mocked(consumeFirstRun).mockReturnValue(false)
     delete process.env.CORTEX_SETUP_SECRET
   })
 
@@ -87,24 +85,5 @@ describe('auth middleware — token enforcement', () => {
   it('returns 401 status for unauthorized requests', () => {
     const event = createMockEvent('/api/agent/config', 'GET')
     expect(() => handler(event)).toThrowError(expect.objectContaining({ statusCode: 401 }))
-  })
-})
-
-describe('auth middleware — first-run auto-session', () => {
-  beforeEach(() => {
-    vi.mocked(readToken).mockReturnValue('configured-token')
-    vi.mocked(consumeFirstRun).mockReturnValue(true)
-    delete process.env.CORTEX_SETUP_SECRET
-  })
-
-  it('allows first request and sets cookie when first-run flag is active', () => {
-    const event = createMockEvent('/api/agent/config', 'GET')
-    expect(() => handler(event)).not.toThrow()
-  })
-
-  it('does not allow first-run auto-session when CORTEX_SETUP_SECRET is set', () => {
-    process.env.CORTEX_SETUP_SECRET = 'some-secret'
-    const event = createMockEvent('/api/agent/config', 'GET')
-    expect(() => handler(event)).toThrow()
   })
 })
