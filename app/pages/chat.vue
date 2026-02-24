@@ -17,6 +17,14 @@ const isLiveMode = computed(() => {
   return config.value.provider.toLowerCase().replace(/\s+/g, '') === 'openai' && Boolean(config.value.apiKey.trim())
 })
 
+const activeModel = computed(() => {
+  return config.value.model.trim() || 'not set'
+})
+
+const chatRuntimeLabel = computed(() => {
+  return `${activeModel.value}`
+})
+
 const promptError = computed<Error | undefined>(() => {
   return lastError.value ? new Error(lastError.value) : undefined
 })
@@ -98,30 +106,49 @@ onMounted(() => {
 })
 </script>
 
-<template class="flex flex-col">
-  <UContainer>
-    <UChatMessages
-      class="h-full"
-      :messages="chatMessages"
-      :status="status"
-      :assistant="{ avatar: { src: '/cortex_avatar.png' }, variant: 'outline' }"
-      should-auto-scroll
-    />
-
-    <UChatPrompt
-      v-model="prompt"
-      variant="soft"
-      :placeholder="isLiveMode ? 'Message Cortex' : 'Message Cortex (mock mode)'"
-      :error="promptError"
-      @submit="onSubmitPrompt"
-    >
-      <UChatPromptSubmit
-        :status="status"
-        icon="i-lucide-send"
-        :disabled="isSubmitDisabled"
-        @stop="stopResponse"
-        @reload="onRetryLastResponse"
+<template>
+  <div class="flex h-full flex-col overflow-hidden">
+    <!-- Badge: shrink-0, never scrolls -->
+    <div class="shrink-0 px-6 pt-4 pb-2">
+      <UBadge
+        :label="chatRuntimeLabel"
+        :color="isLiveMode ? 'success' : 'warning'"
+        variant="subtle"
       />
-    </UChatPrompt>
-  </UContainer>
+    </div>
+
+    <!-- Messages: flex-1 + min-h-0 so it scrolls, not the page -->
+    <div class="flex-1 min-h-0 overflow-y-auto">
+      <UContainer class="py-4">
+        <UChatMessages
+          :messages="chatMessages"
+          :status="status"
+          :assistant="{ avatar: { src: '/cortex_avatar.png' }, variant: 'outline' }"
+          :spacing-offset="176"
+          should-auto-scroll
+        />
+      </UContainer>
+    </div>
+
+    <!-- Prompt: shrink-0, always at the bottom of the panel -->
+    <div class="shrink-0 py-4">
+      <UContainer>
+        <UChatPrompt
+          v-model="prompt"
+          variant="soft"
+          :placeholder="isLiveMode ? 'Message Cortex' : 'Message Cortex (mock mode)'"
+          :error="promptError"
+          @submit="onSubmitPrompt"
+        >
+          <UChatPromptSubmit
+            :status="status"
+            icon="i-lucide-send"
+            :disabled="isSubmitDisabled"
+            @stop="stopResponse"
+            @reload="onRetryLastResponse"
+          />
+        </UChatPrompt>
+      </UContainer>
+    </div>
+  </div>
 </template>
