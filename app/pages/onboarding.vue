@@ -95,7 +95,7 @@ const goNext = async () => {
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
       if (githubForm.ghToken.trim()) vars.push({ key: 'GH_TOKEN', value: githubForm.ghToken.trim() })
       if (vars.length) {
-        await $fetch('/api/env', { method: 'POST', body: { vars } })
+        await $fetch('/api/agent/env', { method: 'POST', headers: authHeaders.value, body: { vars } })
       }
     } else if (currentStep.value === 4) {
       await $fetch('/api/agent/config', {

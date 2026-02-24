@@ -8,6 +8,8 @@ interface EnvPostBody {
 
 const ENV_PATH = resolve(process.cwd(), '.env')
 
+const ALLOWED_KEYS = new Set(['GH_REPO', 'GH_TOKEN'])
+
 const parseEnvFile = (content: string): Map<string, string> => {
   const map = new Map<string, string>()
   for (const line of content.split('\n')) {
@@ -39,6 +41,9 @@ export default defineEventHandler(async (event) => {
     }
     if (typeof entry.value !== 'string') {
       throw createError({ statusCode: 400, statusMessage: 'Each var must have a string value.' })
+    }
+    if (!ALLOWED_KEYS.has(entry.key.trim())) {
+      throw createError({ statusCode: 400, statusMessage: `Key '${entry.key}' is not allowed.` })
     }
   }
 
