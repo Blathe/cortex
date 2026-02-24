@@ -24,16 +24,11 @@ Install dependencies:
 pnpm install
 ```
 
-Copy the environment file and fill in your values:
+No environment variables are required for the default local git commit flow. Copy `.env.example` if you need to add any in future:
 
 ```bash
 cp .env.example .env
 ```
-
-| Variable | Description |
-|----------|-------------|
-| `GH_TOKEN` | GitHub personal access token (required for auto-PR on config changes) |
-| `GH_REPO` | Target repo in `owner/repo` format |
 
 ## Development
 
@@ -88,7 +83,7 @@ agent/
 }
 ```
 
-Changes made through the UI (`/config`) are committed to a new branch and opened as a GitHub PR. PRs labeled `auto-merge` are merged automatically via `.github/workflows/auto-merge-config.yml`; those labeled `needs-review` are left open.
+Changes made through the UI (`/config`) are committed to a new branch and pushed to origin automatically.
 
 ## Tech Stack
 
