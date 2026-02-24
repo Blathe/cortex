@@ -21,8 +21,9 @@ logs
 .fleet
 .idea
 
-# Agent auth token (generated at runtime, never committed)
+# Agent runtime secrets (generated at runtime, never committed)
 agent/config/auth.json
+agent/config/providers.json
 
 # Temporary git worktrees used by commitToBranch
 .gitworktrees/

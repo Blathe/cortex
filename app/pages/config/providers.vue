@@ -10,6 +10,7 @@ onMounted(() => loadProviders())
 // Modal state
 const modalOpen = ref(false)
 const editingId = ref<string | null>(null)
+const isSaving = ref(false)
 
 const formState = reactive({
   name: '',
@@ -33,7 +34,7 @@ const openEdit = (provider: CortexProvider) => {
   editingId.value = provider.id
   formState.name = provider.name
   formState.baseUrl = provider.baseUrl
-  formState.apiKey = provider.apiKey
+  formState.apiKey = '' // never pre-fill — leave blank to keep existing key on server
   formState.models = [...provider.models]
   modalOpen.value = true
 }
@@ -46,49 +47,67 @@ const removeModelEntry = (index: number) => {
   formState.models.splice(index, 1)
 }
 
-const onSave = () => {
-  const cleanModels = formState.models.map(m => m.trim()).filter(Boolean)
-  const payload = {
-    name: formState.name.trim(),
-    baseUrl: formState.baseUrl.trim(),
-    apiKey: formState.apiKey.trim(),
-    models: cleanModels
-  }
+const onSave = async () => {
+  isSaving.value = true
+  try {
+    const cleanModels = formState.models.map(m => m.trim()).filter(Boolean)
+    const payload = {
+      name: formState.name.trim(),
+      baseUrl: formState.baseUrl.trim(),
+      apiKey: formState.apiKey.trim(), // empty = keep existing key on server
+      models: cleanModels
+    }
 
-  if (editingId.value) {
-    updateProvider(editingId.value, payload)
-    toast.add({ title: 'Provider updated', color: 'success' })
-  } else {
-    addProvider(payload)
-    toast.add({ title: 'Provider added', color: 'success' })
-  }
+    if (editingId.value) {
+      await updateProvider(editingId.value, payload)
+      toast.add({ title: 'Provider updated', color: 'success' })
+    } else {
+      await addProvider(payload)
+      toast.add({ title: 'Provider added', color: 'success' })
+    }
 
-  modalOpen.value = false
+    modalOpen.value = false
+  } catch (e) {
+    const err = e as { statusMessage?: string }
+    toast.add({ title: 'Failed to save provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
+  } finally {
+    isSaving.value = false
+  }
 }
 
-const onDelete = (provider: CortexProvider) => {
-  deleteProvider(provider.id)
-  toast.add({
-    title: 'Provider deleted',
-    description: `"${provider.name}" has been removed.`,
-    color: 'warning'
-  })
+const onDelete = async (provider: CortexProvider) => {
+  try {
+    await deleteProvider(provider.id)
+    toast.add({
+      title: 'Provider deleted',
+      description: `"${provider.name}" has been removed.`,
+      color: 'warning'
+    })
+  } catch (e) {
+    const err = e as { statusMessage?: string }
+    toast.add({ title: 'Failed to delete provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
+  }
 }
 
-const onSetActive = (provider: CortexProvider) => {
-  setActive(provider.id)
-  toast.add({
-    title: 'Active provider set',
-    description: `"${provider.name}" is now active.`,
-    color: 'success'
-  })
+const onSetActive = async (provider: CortexProvider) => {
+  try {
+    await setActive(provider.id)
+    toast.add({
+      title: 'Active provider set',
+      description: `"${provider.name}" is now active.`,
+      color: 'success'
+    })
+  } catch (e) {
+    const err = e as { statusMessage?: string }
+    toast.add({ title: 'Failed to set active provider', description: err.statusMessage ?? 'Unknown error', color: 'error' })
+  }
 }
 
 const columns: TableColumn<CortexProvider>[] = [
   { accessorKey: 'name', header: 'Name' },
   { accessorKey: 'baseUrl', header: 'Base URL' },
   { accessorKey: 'models', header: 'Models' },
-  { accessorKey: 'apiKey', header: 'API Key' },
+  { accessorKey: 'apiKeySet', header: 'API Key' },
   { id: 'actions', header: '' }
 ]
 </script>
@@ -140,10 +159,10 @@ const columns: TableColumn<CortexProvider>[] = [
             />
           </template>
 
-          <template #apiKey-cell="{ row }">
+          <template #apiKeySet-cell="{ row }">
             <UBadge
-              :label="row.original.apiKey ? 'Set' : 'Not set'"
-              :color="row.original.apiKey ? 'success' : 'neutral'"
+              :label="row.original.apiKeySet ? 'Set' : 'Not set'"
+              :color="row.original.apiKeySet ? 'success' : 'neutral'"
               variant="subtle"
               size="xs"
             />
@@ -212,7 +231,7 @@ const columns: TableColumn<CortexProvider>[] = [
 
           <UFormField
             label="API Key"
-            hint="Optional"
+            :hint="editingId ? 'Leave blank to keep existing key' : 'Optional'"
           >
             <UInput
               v-model="formState.apiKey"
@@ -267,7 +286,10 @@ const columns: TableColumn<CortexProvider>[] = [
           >
             Cancel
           </UButton>
-          <UButton @click="onSave">
+          <UButton
+            :loading="isSaving"
+            @click="onSave"
+          >
             Save
           </UButton>
         </div>

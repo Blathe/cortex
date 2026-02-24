@@ -24,6 +24,7 @@ export interface AgentSettings {
     autoMerge: boolean
   }
   meta: {
+    onboarded?: boolean
     updatedAt: string
     updatedBy: string
   }
@@ -45,6 +46,7 @@ export const DEFAULT_SETTINGS: AgentSettings = {
     autoMerge: true
   },
   meta: {
+    onboarded: false,
     updatedAt: new Date().toISOString(),
     updatedBy: 'user'
   }
@@ -100,6 +102,13 @@ const PATCH_SCHEMA: Record<string, Record<string, FieldValidator>> = {
         ? null
         : 'Must be a boolean.'
     }
+  },
+  meta: {
+    onboarded: (v) => {
+      return typeof v === 'boolean'
+        ? null
+        : 'Must be a boolean.'
+    }
   }
 }
 
@@ -137,6 +146,7 @@ export const writeSettings = async (patch: Record<string, unknown>, source: 'use
   const current = await readSettings()
   const merged = deepMerge(current as unknown as Record<string, unknown>, patch) as unknown as AgentSettings
   merged.meta = {
+    ...merged.meta,
     updatedAt: new Date().toISOString(),
     updatedBy: source
   }

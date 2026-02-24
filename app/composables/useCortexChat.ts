@@ -146,7 +146,7 @@ export const useCortexChat = () => {
 
   const shouldUseLiveApi = () => {
     const activeConfig = resolveActiveConfig()
-    return normalizeProvider(activeConfig.provider) === 'openai' && Boolean(activeConfig.apiKey.trim())
+    return normalizeProvider(activeConfig.provider) === 'openai' && activeConfig.apiKeySet
   }
 
   const requestAssistantReply = async (promptText: string) => {
@@ -168,9 +168,7 @@ export const useCortexChat = () => {
         body: {
           prompt: promptText,
           provider: activeConfig.provider,
-          model: activeConfig.model,
-          baseUrl: activeConfig.baseUrl,
-          apiKey: activeConfig.apiKey
+          model: activeConfig.model
         }
       })
 

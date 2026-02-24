@@ -1,100 +1,85 @@
 import type { CortexProvider } from '~/types/cortex'
 
-const STORAGE_KEY = 'cortex.providers.v1'
-const ACTIVE_KEY = 'cortex.providers.active'
+// Input type for create/update — apiKey is the real secret (sent to server once, never stored client-side)
+export interface ProviderInput {
+  name: string
+  baseUrl: string
+  apiKey?: string
+  models: string[]
+}
 
-const defaultProvider = (): CortexProvider => ({
-  id: 'openai-default',
-  name: 'OpenAI',
-  baseUrl: 'https://api.openai.com/v1',
-  apiKey: '',
-  models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']
-})
+interface ProvidersGetResponse {
+  providers: CortexProvider[]
+  activeId: string | null
+}
 
-const sanitizeProvider = (p: unknown): CortexProvider | null => {
-  const maybe = p as Partial<CortexProvider> | null
-  if (!maybe || typeof maybe !== 'object') return null
-  if (typeof maybe.id !== 'string' || !maybe.id) return null
-  return {
-    id: maybe.id,
-    name: typeof maybe.name === 'string' ? maybe.name : '',
-    baseUrl: typeof maybe.baseUrl === 'string' ? maybe.baseUrl : '',
-    apiKey: typeof maybe.apiKey === 'string' ? maybe.apiKey : '',
-    models: Array.isArray(maybe.models) ? maybe.models.filter(m => typeof m === 'string') : []
-  }
+interface ProviderPostResponse {
+  ok: boolean
+  id: string
 }
 
 export const useCortexProviders = () => {
-  const providers = useState<CortexProvider[]>('cortex.providers', () => [defaultProvider()])
+  const providers = useState<CortexProvider[]>('cortex.providers', () => [])
   const activeProviderId = useState<string | null>('cortex.providers.active', () => null)
 
-  const loadProviders = () => {
-    if (!import.meta.client) return
+  const { authHeaders } = useCortexAuth()
 
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          const valid = parsed.map(sanitizeProvider).filter((p): p is CortexProvider => p !== null)
-          providers.value = valid.length ? valid : [defaultProvider()]
-        }
-      } catch {
-        providers.value = [defaultProvider()]
-      }
-    }
-
-    const activeRaw = localStorage.getItem(ACTIVE_KEY)
-    if (activeRaw && providers.value.some(p => p.id === activeRaw)) {
-      activeProviderId.value = activeRaw
-    } else {
-      activeProviderId.value = null
-    }
+  const loadProviders = async () => {
+    const res = await $fetch<ProvidersGetResponse>('/api/agent/providers', {
+      headers: authHeaders.value
+    })
+    providers.value = res.providers
+    activeProviderId.value = res.activeId
   }
 
-  const saveProviders = () => {
-    if (!import.meta.client) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(providers.value))
-    if (activeProviderId.value !== null) {
-      localStorage.setItem(ACTIVE_KEY, activeProviderId.value)
-    } else {
-      localStorage.removeItem(ACTIVE_KEY)
-    }
+  const addProvider = async (input: ProviderInput) => {
+    const res = await $fetch<ProviderPostResponse>('/api/agent/providers', {
+      method: 'POST',
+      headers: authHeaders.value,
+      body: input
+    })
+    await loadProviders()
+    return res.id
   }
 
-  const addProvider = (p: Omit<CortexProvider, 'id'>) => {
-    const id = `provider-${Date.now()}`
-    providers.value = [...providers.value, { ...p, id }]
-    saveProviders()
-    return id
+  const updateProvider = async (id: string, patch: Partial<ProviderInput>) => {
+    await $fetch('/api/agent/providers', {
+      method: 'POST',
+      headers: authHeaders.value,
+      body: { id, ...patch }
+    })
+    await loadProviders()
   }
 
-  const updateProvider = (id: string, patch: Partial<Omit<CortexProvider, 'id'>>) => {
-    providers.value = providers.value.map(p => p.id === id ? { ...p, ...patch } : p)
-    saveProviders()
-  }
-
-  const deleteProvider = (id: string) => {
+  const deleteProvider = async (id: string) => {
+    await $fetch(`/api/agent/providers/${id}`, {
+      method: 'DELETE',
+      headers: authHeaders.value
+    })
     providers.value = providers.value.filter(p => p.id !== id)
     if (activeProviderId.value === id) {
-      activeProviderId.value = null
+      activeProviderId.value = providers.value[0]?.id ?? null
     }
-    saveProviders()
   }
 
-  const setActive = (id: string) => {
+  const setActive = async (id: string) => {
     const provider = providers.value.find(p => p.id === id)
     if (!provider) return
 
+    await $fetch('/api/agent/providers', {
+      method: 'POST',
+      headers: authHeaders.value,
+      body: { id, name: provider.name, baseUrl: provider.baseUrl, models: provider.models, setActive: true }
+    })
+
     activeProviderId.value = id
-    saveProviders()
 
     const { saveConfig, config } = useCortexConfig()
     saveConfig({
       provider: provider.name,
       model: config.value.model,
       baseUrl: provider.baseUrl,
-      apiKey: provider.apiKey
+      apiKeySet: provider.apiKeySet
     })
   }
 
@@ -102,7 +87,6 @@ export const useCortexProviders = () => {
     providers,
     activeProviderId,
     loadProviders,
-    saveProviders,
     addProvider,
     updateProvider,
     deleteProvider,

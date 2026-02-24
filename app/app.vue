@@ -94,7 +94,15 @@ const navigationItems = computed(() => {
 
 <template>
   <UApp>
+    <div
+      v-if="route.path === '/onboarding'"
+      class="min-h-dvh"
+    >
+      <NuxtPage />
+    </div>
+
     <UDashboardGroup
+      v-else
       class="min-h-dvh bg-elevated/20"
       :persistent="false"
       unit="rem"

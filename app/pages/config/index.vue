@@ -4,7 +4,7 @@ import type { AgentSettings, CortexConfig } from '~/types/cortex'
 type ConfigFormState = Omit<CortexConfig, 'updatedAt'>
 
 const { config, loadConfig } = useCortexConfig()
-const { token, saveToken, authHeaders } = useCortexAuth()
+const { authHeaders } = useCortexAuth()
 const toast = useToast()
 
 // ── LLM runtime config ────────────────────────────────────────────────────────
@@ -13,7 +13,7 @@ const state = reactive<ConfigFormState>({
   provider: '',
   model: '',
   baseUrl: '',
-  apiKey: ''
+  apiKeySet: false
 })
 
 const lastUpdatedLabel = computed(() => {
@@ -24,23 +24,27 @@ const syncFromConfig = (value: CortexConfig) => {
   state.provider = value.provider
   state.model = value.model
   state.baseUrl = value.baseUrl
-  state.apiKey = value.apiKey
+  state.apiKeySet = value.apiKeySet
 }
 
 // ── Security ──────────────────────────────────────────────────────────────────
 
 const tokenGenerating = ref(false)
 const showRegenerateWarning = ref(false)
+const newlyGeneratedToken = ref<string | null>(null)
 
 const onGenerateToken = async () => {
   tokenGenerating.value = true
   showRegenerateWarning.value = false
+  newlyGeneratedToken.value = null
   try {
     const { token: newToken } = await $fetch<{ token: string }>('/api/agent/auth/generate', {
       method: 'POST',
       headers: authHeaders.value
     })
-    saveToken(newToken)
+    // Token is stored in an HttpOnly cookie by the server.
+    // Display it once here so the user can copy it for CLI/API use.
+    newlyGeneratedToken.value = newToken
     toast.add({ title: 'Token generated', color: 'success' })
   } catch {
     toast.add({ title: 'Failed to generate token', color: 'error' })
@@ -50,8 +54,8 @@ const onGenerateToken = async () => {
 }
 
 const onCopyToken = async () => {
-  if (!token.value) return
-  await navigator.clipboard.writeText(token.value)
+  if (!newlyGeneratedToken.value) return
+  await navigator.clipboard.writeText(newlyGeneratedToken.value)
   toast.add({ title: 'Token copied to clipboard', color: 'success' })
 }
 
@@ -310,27 +314,34 @@ onMounted(async () => {
             </template>
 
             <div class="space-y-4">
-              <UFormField
-                label="API Token"
-                :help="token ? 'Include this as an Authorization: Bearer header in API requests.' : 'No token generated yet. All agent API endpoints are currently open.'"
+              <UAlert
+                v-if="newlyGeneratedToken"
+                color="success"
+                icon="i-lucide-key"
+                title="Token generated — copy it now"
+                description="This is the only time it will be shown. The server stores it in agent/config/auth.json for CLI/API use."
               >
-                <div class="flex gap-2">
-                  <UInput
-                    :model-value="token ?? ''"
-                    readonly
-                    class="flex-1 font-mono text-xs"
-                    placeholder="No token generated"
-                  />
-                  <UButton
-                    icon="i-lucide-copy"
-                    color="neutral"
-                    variant="ghost"
-                    aria-label="Copy token"
-                    :disabled="!token"
-                    @click="onCopyToken"
-                  />
-                </div>
-              </UFormField>
+                <template #description>
+                  <p class="mb-2 text-xs">
+                    This is shown once. For CLI/API access, also find it in <code>agent/config/auth.json</code>.
+                  </p>
+                  <div class="flex gap-2">
+                    <UInput
+                      :model-value="newlyGeneratedToken"
+                      readonly
+                      class="flex-1 font-mono text-xs"
+                    />
+                    <UButton
+                      icon="i-lucide-copy"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Copy token"
+                      @click="onCopyToken"
+                    />
+                  </div>
+                </template>
+              </UAlert>
 
               <UAlert
                 v-if="showRegenerateWarning"
@@ -343,11 +354,11 @@ onMounted(async () => {
               <div class="flex justify-end">
                 <UButton
                   :loading="tokenGenerating"
-                  :color="token ? 'neutral' : 'primary'"
-                  :variant="token ? 'outline' : 'solid'"
-                  @click="token ? (showRegenerateWarning = true) : onGenerateToken()"
+                  color="neutral"
+                  variant="outline"
+                  @click="showRegenerateWarning = true"
                 >
-                  {{ token ? 'Regenerate token' : 'Generate token' }}
+                  Generate / rotate token
                 </UButton>
                 <UButton
                   v-if="showRegenerateWarning"
@@ -356,7 +367,7 @@ onMounted(async () => {
                   :loading="tokenGenerating"
                   @click="onGenerateToken"
                 >
-                  Confirm regenerate
+                  Confirm
                 </UButton>
               </div>
             </div>
@@ -388,8 +399,8 @@ onMounted(async () => {
               <div class="flex items-center justify-between gap-2">
                 <span class="text-sm text-muted">Mode</span>
                 <UBadge
-                  :label="state.apiKey ? 'Live API' : 'Mock'"
-                  :color="state.apiKey ? 'success' : 'warning'"
+                  :label="state.apiKeySet ? 'Live API' : 'Mock'"
+                  :color="state.apiKeySet ? 'success' : 'warning'"
                   variant="subtle"
                 />
               </div>
@@ -424,7 +435,7 @@ onMounted(async () => {
               </p>
             </template>
             <div class="space-y-2 text-sm text-muted">
-              <p>LLM settings are stored in browser local storage.</p>
+              <p>Provider credentials are stored server-side in <code>agent/config/providers.json</code> (gitignored).</p>
               <p>Agent behavior settings are written to <code>agent/config/settings.json</code> and committed on save.</p>
               <p>System prompt is loaded from <code>agent/prompts/</code>.</p>
             </div>

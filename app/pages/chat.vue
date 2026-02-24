@@ -15,7 +15,7 @@ const { config, loadConfig } = useCortexConfig()
 const toast = useToast()
 
 const isLiveMode = computed(() => {
-  return config.value.provider.toLowerCase().replace(/\s+/g, '') === 'openai' && Boolean(config.value.apiKey.trim())
+  return config.value.provider.toLowerCase().replace(/\s+/g, '') === 'openai' && config.value.apiKeySet
 })
 
 const activeModel = computed(() => {
