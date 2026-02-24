@@ -1,4 +1,11 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { createError, defineEventHandler, readBody } from 'h3'
+
+const systemPrompt = readFileSync(
+  resolve(process.cwd(), 'agent/prompts/SYSTEM_PROMPT.md'),
+  'utf-8'
+).trim()
 
 interface ChatRequestBody {
   prompt?: string
@@ -48,8 +55,6 @@ export default defineEventHandler(async (event) => {
   const model = body.model?.trim()
   const baseUrl = (body.baseUrl?.trim() || DEFAULT_BASE_URL).replace(/\/$/, '')
   const apiKey = body.apiKey?.trim()
-  // TODO: load system prompt from agent/prompts/ markdown file
-  const systemPrompt = 'You are Cortex, an autonomous AI assistant.'
 
   if (!prompt) {
     throw createError({ statusCode: 400, statusMessage: 'Prompt is required.' })
