@@ -24,6 +24,9 @@ logs
 # Agent auth token (generated at runtime, never committed)
 agent/config/auth.json
 
+# Temporary git worktrees used by commitToBranch
+.gitworktrees/
+
 # Local env files
 .env
 .env.*

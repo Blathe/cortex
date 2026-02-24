@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
@@ -259,8 +259,29 @@ const git = (...args: string[]) =>
   execFileAsync('git', args, { cwd: process.cwd() })
 
 export const commitToBranch = async (branch: string, files: string[], message: string): Promise<void> => {
-  await git('checkout', '-b', branch)
-  await git('add', ...files)
-  await git('commit', '-m', message)
-  await git('push', '--set-upstream', 'origin', branch)
+  const cwd = process.cwd()
+  const safeName = branch.replace(/[^a-z0-9-]/g, '-')
+  const worktreePath = resolve(cwd, `.gitworktrees/${safeName}`)
+
+  try {
+    // Create an isolated worktree on a new branch — main working tree HEAD is never touched
+    await git('worktree', 'add', '-b', branch, worktreePath)
+
+    // Copy the changed files from the main tree into the worktree
+    for (const file of files) {
+      const rel = relative(cwd, file)
+      const dest = resolve(worktreePath, rel)
+      mkdirSync(dirname(dest), { recursive: true })
+      copyFileSync(file, dest)
+    }
+
+    // Commit and push from within the isolated worktree
+    const worktreeGit = (...args: string[]) => execFileAsync('git', args, { cwd: worktreePath })
+    await worktreeGit('add', ...files.map(f => relative(cwd, f)))
+    await worktreeGit('commit', '-m', message)
+    await worktreeGit('push', '--set-upstream', 'origin', branch)
+  } finally {
+    // Always clean up the worktree regardless of success or failure
+    await git('worktree', 'remove', '--force', worktreePath).catch(() => {})
+  }
 }
