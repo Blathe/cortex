@@ -199,10 +199,10 @@ const onAgentSubmit = async () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-onMounted(() => {
+onMounted(async () => {
   const loadedConfig = loadConfig()
   syncFromConfig(loadedConfig)
-  loadTokenFromServer()
+  await loadTokenFromServer()
   loadAgentSettings()
 })
 </script>

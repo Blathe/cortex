@@ -9,12 +9,8 @@ export default defineEventHandler((event) => {
   if (event.path.startsWith('/api/agent/auth/')) return
 
   const stored = readToken()
-
-  // Bootstrap mode: no token set yet, allow all requests through
-  if (!stored) return
-
   const header = getHeader(event, 'authorization')
-  if (!header || header !== `Bearer ${stored}`) {
+  if (!stored || !header || header !== `Bearer ${stored}`) {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 })
