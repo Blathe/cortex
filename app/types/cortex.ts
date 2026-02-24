@@ -82,6 +82,12 @@ export interface AgentSettings {
   }
 }
 
+export interface DashboardPrefs {
+  primaryColor: string
+  timezone: string
+  dateFormat: 'relative' | 'absolute'
+}
+
 export interface AgentChangeLog {
   filename: string
   timestamp: string
