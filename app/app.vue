@@ -68,7 +68,9 @@ const navigationItems = computed(() => {
       defaultOpen: isActiveRoute('/config'),
       children: [
         { label: 'Agent', to: '/config', icon: 'i-lucide-bot', active: route.path === '/config' },
-        { label: 'Sources', to: '/config/sources', icon: 'i-lucide-database', active: route.path === '/config/sources' }
+        { label: 'Providers', to: '/config/providers', icon: 'i-lucide-plug', active: route.path === '/config/providers' },
+        { label: 'Sources', to: '/config/sources', icon: 'i-lucide-database', active: route.path === '/config/sources' },
+        { label: 'Logs', to: '/config/logs', icon: 'i-lucide-scroll-text', active: route.path === '/config/logs' }
       ]
     },
     {

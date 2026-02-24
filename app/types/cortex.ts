@@ -61,6 +61,14 @@ export interface CortexJobLog {
   timestamp: string
 }
 
+export interface AgentChangeLog {
+  filename: string
+  timestamp: string
+  changedBy: string
+  patch: Record<string, unknown>
+  reason: string
+}
+
 export interface CortexCron {
   id: string
   name: string
