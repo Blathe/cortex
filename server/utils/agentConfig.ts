@@ -57,7 +57,51 @@ export const LOW_RISK_FIELDS = new Set([
   'reasoning.maxTokens'
 ])
 
-const VALID_TOP_LEVEL_KEYS = new Set(['persona', 'reasoning', 'git', 'meta'])
+type FieldValidator = (v: unknown) => string | null
+
+const PATCH_SCHEMA: Record<string, Record<string, FieldValidator>> = {
+  persona: {
+    name: (v) => {
+      return (typeof v === 'string' && v.trim().length > 0)
+        ? null
+        : 'Must be a non-empty string.'
+    },
+    tone: (v) => {
+      return ['professional', 'casual', 'concise', 'verbose'].includes(v as string)
+        ? null
+        : 'Must be one of: professional, casual, concise, verbose.'
+    },
+    verbosity: (v) => {
+      return ['low', 'medium', 'high'].includes(v as string)
+        ? null
+        : 'Must be one of: low, medium, high.'
+    }
+  },
+  reasoning: {
+    temperature: (v) => {
+      return (typeof v === 'number' && v >= 0 && v <= 2)
+        ? null
+        : 'Must be a number between 0 and 2.'
+    },
+    maxTokens: (v) => {
+      return (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 16384)
+        ? null
+        : 'Must be an integer between 1 and 16384.'
+    }
+  },
+  git: {
+    autoPush: (v) => {
+      return typeof v === 'boolean'
+        ? null
+        : 'Must be a boolean.'
+    },
+    autoMerge: (v) => {
+      return typeof v === 'boolean'
+        ? null
+        : 'Must be a boolean.'
+    }
+  }
+}
 
 export const readSettings = (): AgentSettings => {
   try {
@@ -104,9 +148,27 @@ export const writeSettings = (patch: Record<string, unknown>, source: 'user' | '
 }
 
 export const validatePatch = (patch: Record<string, unknown>): string | null => {
-  for (const key of Object.keys(patch)) {
-    if (!VALID_TOP_LEVEL_KEYS.has(key)) {
-      return `Unknown top-level key: "${key}". Allowed keys: ${[...VALID_TOP_LEVEL_KEYS].join(', ')}`
+  const allowedSections = Object.keys(PATCH_SCHEMA)
+
+  for (const [section, value] of Object.entries(patch)) {
+    const sectionSchema = PATCH_SCHEMA[section]
+    if (!sectionSchema) {
+      return `Unknown section "${section}". Allowed: ${allowedSections.join(', ')}.`
+    }
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return `"${section}" must be an object.`
+    }
+    const fields = value as Record<string, unknown>
+    const allowedFields = Object.keys(sectionSchema)
+    for (const [field, fieldVal] of Object.entries(fields)) {
+      const validate = sectionSchema[field]
+      if (!validate) {
+        return `Unknown field "${section}.${field}". Allowed: ${allowedFields.join(', ')}.`
+      }
+      const err = validate(fieldVal)
+      if (err) {
+        return `Invalid value for "${section}.${field}": ${err}`
+      }
     }
   }
   return null
