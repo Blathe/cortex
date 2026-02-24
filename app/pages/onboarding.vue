@@ -2,68 +2,8 @@
 import type { StepperItem } from '@nuxt/ui'
 
 const { addProvider, setActive } = useCortexProviders()
-const { saveToken, authHeaders } = useCortexAuth()
+const { authHeaders } = useCortexAuth()
 
-// ── Bootstrap (runs before the wizard is shown) ─────────────────────────────
-// We call POST /api/agent/auth/generate on mount to silently establish a session.
-// If CORTEX_SETUP_SECRET is configured the server returns 403 and we prompt for it.
-// If a token exists but the cookie is missing/expired the server returns 401 and
-// we fall back to the manual-token login flow.
-type BootstrapState = 'loading' | 'ready' | 'setup-secret' | 'login'
-const bootstrapState = ref<BootstrapState>('loading')
-const bootstrapError = ref<string | null>(null)
-const setupSecret = ref('')
-const loginToken = ref('')
-
-const tryGenerate = async (secret?: string) => {
-  bootstrapError.value = null
-  const headers: Record<string, string> = {}
-  if (secret) headers['x-cortex-setup-secret'] = secret
-  await $fetch('/api/agent/auth/generate', { method: 'POST', headers })
-  bootstrapState.value = 'ready'
-}
-
-const handleBootstrapSecret = async () => {
-  if (!setupSecret.value.trim()) return
-  try {
-    await tryGenerate(setupSecret.value.trim())
-  } catch (e) {
-    const err = e as { statusCode?: number, statusMessage?: string }
-    bootstrapError.value = err.statusCode === 403
-      ? 'Invalid setup secret. Check your CORTEX_SETUP_SECRET environment variable.'
-      : (err.statusMessage ?? 'Failed to authenticate.')
-  }
-}
-
-const handleLogin = async () => {
-  if (!loginToken.value.trim()) return
-  bootstrapError.value = null
-  try {
-    await saveToken(loginToken.value.trim())
-    bootstrapState.value = 'ready'
-  } catch (e) {
-    const err = e as { statusMessage?: string }
-    bootstrapError.value = err.statusMessage ?? 'Invalid token.'
-  }
-}
-
-onMounted(async () => {
-  try {
-    await tryGenerate()
-  } catch (e) {
-    const err = e as { statusCode?: number }
-    if (err.statusCode === 403) {
-      bootstrapState.value = 'setup-secret'
-    } else if (err.statusCode === 401) {
-      bootstrapState.value = 'login'
-    } else {
-      // Unexpected error — still let the user proceed; API calls will surface the error.
-      bootstrapState.value = 'ready'
-    }
-  }
-})
-
-// ── Wizard ───────────────────────────────────────────────────────────────────
 const currentStep = ref<number>(0)
 const isDone = ref(false)
 const isLoading = ref(false)
@@ -200,106 +140,8 @@ const goBack = () => {
         </div>
       </div>
 
-      <!-- Bootstrap: loading -->
-      <div
-        v-if="bootstrapState === 'loading'"
-        class="flex justify-center py-16"
-      >
-        <UIcon
-          name="i-lucide-loader-circle"
-          class="size-8 animate-spin text-muted"
-        />
-      </div>
-
-      <!-- Bootstrap: setup secret required -->
-      <UCard v-else-if="bootstrapState === 'setup-secret'">
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <UIcon
-              name="i-lucide-lock"
-              class="size-5 text-primary"
-            />
-            <h2 class="text-lg font-semibold text-highlighted">
-              Setup Secret Required
-            </h2>
-          </div>
-          <p class="text-sm text-muted">
-            This server requires a setup secret to generate the first access token.
-            Enter the value of <code class="rounded bg-elevated px-1">CORTEX_SETUP_SECRET</code> from your server environment.
-          </p>
-          <UFormField label="Setup Secret">
-            <UInput
-              v-model="setupSecret"
-              type="password"
-              placeholder="Enter setup secret"
-              class="w-full"
-              @keydown.enter="handleBootstrapSecret"
-            />
-          </UFormField>
-          <UAlert
-            v-if="bootstrapError"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-circle-x"
-            :title="bootstrapError"
-          />
-        </div>
-        <template #footer>
-          <UButton
-            icon="i-lucide-arrow-right"
-            trailing
-            @click="handleBootstrapSecret"
-          >
-            Continue
-          </UButton>
-        </template>
-      </UCard>
-
-      <!-- Bootstrap: login with existing token -->
-      <UCard v-else-if="bootstrapState === 'login'">
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <UIcon
-              name="i-lucide-key"
-              class="size-5 text-primary"
-            />
-            <h2 class="text-lg font-semibold text-highlighted">
-              Enter Your Access Token
-            </h2>
-          </div>
-          <p class="text-sm text-muted">
-            An access token is already configured on this server. Paste it below to authenticate your browser session.
-          </p>
-          <UFormField label="Access Token">
-            <UInput
-              v-model="loginToken"
-              type="password"
-              placeholder="Paste your token"
-              class="w-full"
-              @keydown.enter="handleLogin"
-            />
-          </UFormField>
-          <UAlert
-            v-if="bootstrapError"
-            color="error"
-            variant="subtle"
-            icon="i-lucide-circle-x"
-            :title="bootstrapError"
-          />
-        </div>
-        <template #footer>
-          <UButton
-            icon="i-lucide-arrow-right"
-            trailing
-            @click="handleLogin"
-          >
-            Continue
-          </UButton>
-        </template>
-      </UCard>
-
       <!-- Done screen -->
-      <div v-else-if="isDone">
+      <div v-if="isDone">
         <UCard>
           <div class="py-8 text-center">
             <UIcon
@@ -323,7 +165,7 @@ const goBack = () => {
         </UCard>
       </div>
 
-      <!-- Wizard (bootstrapState === 'ready') -->
+      <!-- Wizard -->
       <template v-else>
         <UStepper
           v-model="currentStep"

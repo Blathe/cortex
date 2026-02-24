@@ -8,6 +8,23 @@ interface AuthConfig {
   token: string
 }
 
+// Set once per process by the startup plugin when it generates a fresh token.
+// Consumed (and cleared) by the auth middleware to silently establish the first
+// browser session without requiring the user to call /generate explicitly.
+let firstRunPending = false
+
+export const setFirstRunPending = (): void => {
+  firstRunPending = true
+}
+
+export const consumeFirstRun = (): boolean => {
+  if (firstRunPending) {
+    firstRunPending = false
+    return true
+  }
+  return false
+}
+
 export const readToken = (): string | null => {
   try {
     if (!existsSync(AUTH_PATH)) return null

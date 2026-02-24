@@ -1,5 +1,5 @@
-import { createError, defineEventHandler, getCookie, getHeader } from 'h3'
-import { readToken } from '../utils/authToken'
+import { createError, defineEventHandler, getCookie, getHeader, setCookie } from 'h3'
+import { consumeFirstRun, readToken } from '../utils/authToken'
 
 export default defineEventHandler((event) => {
   // Only guard agent endpoints
@@ -20,6 +20,20 @@ export default defineEventHandler((event) => {
   const cookie = getCookie(event, 'cortex_auth')
 
   if (header === `Bearer ${stored}` || cookie === stored) return
+
+  // First browser request after a fresh install — silently establish a session
+  // by setting the HttpOnly cookie. Only applies when CORTEX_SETUP_SECRET is not
+  // configured; shared deployments that set the secret require explicit auth.
+  if (!process.env.CORTEX_SETUP_SECRET && consumeFirstRun()) {
+    setCookie(event, 'cortex_auth', stored, {
+      httpOnly: true,
+      sameSite: 'strict',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 365
+    })
+    return
+  }
 
   throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
 })
