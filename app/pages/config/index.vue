@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui'
 import type { AgentSettings, CortexConfig } from '~/types/cortex'
 
 type ConfigFormState = Omit<CortexConfig, 'updatedAt'>
 
-const { config, loadConfig, saveConfig, resetConfig } = useCortexConfig()
+const { config, loadConfig } = useCortexConfig()
 const { token, saveToken, authHeaders } = useCortexAuth()
 const toast = useToast()
 
@@ -21,57 +20,11 @@ const lastUpdatedLabel = computed(() => {
   return new Date(config.value.updatedAt).toLocaleString()
 })
 
-const apiKeyHelp = computed(() => {
-  return state.apiKey
-    ? 'Stored locally in this browser for v1.'
-    : 'Optional. Leave blank to keep chat in mock mode.'
-})
-
 const syncFromConfig = (value: CortexConfig) => {
   state.provider = value.provider
   state.model = value.model
   state.baseUrl = value.baseUrl
   state.apiKey = value.apiKey
-}
-
-const validate = (formState: Partial<ConfigFormState>): FormError[] => {
-  const errors: FormError[] = []
-
-  if (!formState.provider?.trim()) {
-    errors.push({ name: 'provider', message: 'Provider is required.' })
-  }
-
-  if (!formState.model?.trim()) {
-    errors.push({ name: 'model', message: 'Model is required.' })
-  }
-
-  if (!formState.baseUrl?.trim()) {
-    errors.push({ name: 'baseUrl', message: 'API base URL is required.' })
-  }
-
-  return errors
-}
-
-const onSubmit = (event: FormSubmitEvent<ConfigFormState>) => {
-  const savedConfig = saveConfig(event.data)
-  syncFromConfig(savedConfig)
-
-  toast.add({
-    title: 'Configuration saved',
-    description: `Updated ${new Date(savedConfig.updatedAt).toLocaleTimeString()}.`,
-    color: 'success'
-  })
-}
-
-const onReset = () => {
-  const defaults = resetConfig()
-  syncFromConfig(defaults)
-
-  toast.add({
-    title: 'Defaults restored',
-    description: 'Configuration has been reset.',
-    color: 'warning'
-  })
 }
 
 // ── Security ──────────────────────────────────────────────────────────────────
