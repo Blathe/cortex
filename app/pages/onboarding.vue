@@ -4,12 +4,12 @@ import type { StepperItem } from '@nuxt/ui'
 const { addProvider, setActive } = useCortexProviders()
 const { saveToken, authHeaders } = useCortexAuth()
 
-const currentStep = ref<number>(1)
+const currentStep = ref<number>(0)
 const isDone = ref(false)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
 
-// Step 2 — LLM Provider
+// Step 1 — LLM Provider
 const providerForm = reactive({
   name: 'OpenAI',
   baseUrl: 'https://api.openai.com/v1',
@@ -17,18 +17,18 @@ const providerForm = reactive({
   model: 'gpt-4o'
 })
 
-// Step 3 — API Token
+// Step 2 — API Token
 const tokenMode = ref<'generate' | 'paste'>('generate')
 const pastedToken = ref('')
 const generatedToken = ref('')
 
-// Step 4 — GitHub
+// Step 3 — GitHub
 const githubForm = reactive({
   ghRepo: '',
   ghToken: ''
 })
 
-// Step 5 — Persona
+// Step 4 — Persona
 const personaForm = reactive({
   name: 'Cortex',
   tone: 'casual',
@@ -36,11 +36,11 @@ const personaForm = reactive({
 })
 
 const steps = ref<StepperItem[]>([
-  { title: 'Welcome', description: 'Introduction', value: 1, icon: 'i-lucide-sparkles' },
-  { title: 'LLM Provider', description: 'Configure AI provider', value: 2, icon: 'i-lucide-plug' },
-  { title: 'API Token', description: 'Secure access token', value: 3, icon: 'i-lucide-key' },
-  { title: 'GitHub', description: 'Repository credentials', value: 4, icon: 'i-lucide-github' },
-  { title: 'Persona', description: 'Agent behavior', value: 5, icon: 'i-lucide-bot' }
+  { title: 'Welcome', description: 'Introduction', icon: 'i-lucide-sparkles' },
+  { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
+  { title: 'API Token', description: 'Secure access token', icon: 'i-lucide-key' },
+  { title: 'GitHub', description: 'Repository credentials', icon: 'i-lucide-github' },
+  { title: 'Persona', description: 'Agent behavior', icon: 'i-lucide-bot' }
 ])
 
 const toneOptions = [
@@ -78,7 +78,7 @@ const goNext = async () => {
   error.value = null
   isLoading.value = true
   try {
-    if (currentStep.value === 2) {
+    if (currentStep.value === 1) {
       const id = addProvider({
         name: providerForm.name,
         baseUrl: providerForm.baseUrl,
@@ -86,18 +86,18 @@ const goNext = async () => {
         models: [providerForm.model]
       })
       setActive(id)
-    } else if (currentStep.value === 3) {
+    } else if (currentStep.value === 2) {
       if (tokenMode.value === 'paste' && pastedToken.value.trim()) {
         saveToken(pastedToken.value.trim())
       }
-    } else if (currentStep.value === 4) {
+    } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []
       if (githubForm.ghRepo.trim()) vars.push({ key: 'GH_REPO', value: githubForm.ghRepo.trim() })
       if (githubForm.ghToken.trim()) vars.push({ key: 'GH_TOKEN', value: githubForm.ghToken.trim() })
       if (vars.length) {
         await $fetch('/api/env', { method: 'POST', body: { vars } })
       }
-    } else if (currentStep.value === 5) {
+    } else if (currentStep.value === 4) {
       await $fetch('/api/agent/config', {
         method: 'POST',
         body: {
@@ -114,7 +114,7 @@ const goNext = async () => {
       })
     }
 
-    if (currentStep.value < 5) {
+    if (currentStep.value < 4) {
       currentStep.value += 1
     } else {
       await finishOnboarding()
@@ -141,7 +141,7 @@ const finishOnboarding = async () => {
 }
 
 const goBack = () => {
-  if (currentStep.value > 1) {
+  if (currentStep.value > 0) {
     error.value = null
     currentStep.value -= 1
   }
@@ -202,8 +202,8 @@ const goBack = () => {
         />
 
         <UCard>
-          <!-- Step 1: Welcome -->
-          <div v-if="currentStep === 1">
+          <!-- Step 0: Welcome -->
+          <div v-if="currentStep === 0">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               Welcome to Cortex
             </h2>
@@ -240,13 +240,10 @@ const goBack = () => {
                 Personalizing the agent's behavior
               </li>
             </ul>
-            <p class="text-xs text-muted">
-              Each step is optional except the LLM provider, which is required for chat.
-            </p>
           </div>
 
-          <!-- Step 2: LLM Provider -->
-          <div v-else-if="currentStep === 2">
+          <!-- Step 1: LLM Provider -->
+          <div v-else-if="currentStep === 1">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               LLM Provider
             </h2>
@@ -286,8 +283,8 @@ const goBack = () => {
             </div>
           </div>
 
-          <!-- Step 3: API Token -->
-          <div v-else-if="currentStep === 3">
+          <!-- Step 2: API Token -->
+          <div v-else-if="currentStep === 2">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               API Token
             </h2>
@@ -340,8 +337,8 @@ const goBack = () => {
             </div>
           </div>
 
-          <!-- Step 4: GitHub Setup -->
-          <div v-else-if="currentStep === 4">
+          <!-- Step 3: GitHub Setup -->
+          <div v-else-if="currentStep === 3">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               GitHub Setup
             </h2>
@@ -381,8 +378,8 @@ const goBack = () => {
             </p>
           </div>
 
-          <!-- Step 5: Agent Persona -->
-          <div v-else-if="currentStep === 5">
+          <!-- Step 4: Agent Persona -->
+          <div v-else-if="currentStep === 4">
             <h2 class="mb-2 text-xl font-semibold text-highlighted">
               Agent Persona
             </h2>
@@ -427,7 +424,7 @@ const goBack = () => {
           <template #footer>
             <div class="flex items-center justify-between">
               <UButton
-                v-if="currentStep > 1"
+                v-if="currentStep > 0"
                 variant="ghost"
                 icon="i-lucide-arrow-left"
                 :disabled="isLoading"
@@ -440,10 +437,10 @@ const goBack = () => {
               <UButton
                 :loading="isLoading"
                 trailing
-                :icon="currentStep === 5 ? 'i-lucide-check' : 'i-lucide-arrow-right'"
+                :icon="currentStep === 4 ? 'i-lucide-check' : 'i-lucide-arrow-right'"
                 @click="goNext"
               >
-                {{ currentStep === 4 ? 'Skip / Next' : currentStep === 5 ? 'Finish' : 'Next' }}
+                {{ currentStep === 3 ? 'Skip / Next' : currentStep === 4 ? 'Finish' : 'Next' }}
               </UButton>
             </div>
           </template>
