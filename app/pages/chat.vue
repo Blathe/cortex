@@ -132,9 +132,15 @@ onMounted(() => {
           :spacing-offset="176"
           should-auto-scroll
         />
+      </UContainer>
+    </div>
+
+    <!-- Prompt: shrink-0, always at the bottom of the panel -->
+    <div class="shrink-0 py-4">
+      <UContainer>
         <div
           v-if="proposalMessages.length"
-          class="mt-4 space-y-3"
+          class="mb-3 space-y-3"
         >
           <ConfigProposalCard
             v-for="msg in proposalMessages"
@@ -144,12 +150,6 @@ onMounted(() => {
             @dismiss="clearProposal"
           />
         </div>
-      </UContainer>
-    </div>
-
-    <!-- Prompt: shrink-0, always at the bottom of the panel -->
-    <div class="shrink-0 py-4">
-      <UContainer>
         <UChatPrompt
           v-model="prompt"
           variant="soft"
