@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const riskLevel = classifyRisk(patch)
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 23)
   const branch = `agent-config/${timestamp}`
   const commitMessage = `feat(agent): update config — ${reason || 'agent self-configuration'}`
 

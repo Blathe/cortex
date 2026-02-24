@@ -216,7 +216,7 @@ export const createChangeLog = (
 
   const now = new Date()
   const datePart = now.toISOString().replace('T', ' ').slice(0, 19)
-  const fileDate = now.toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const fileDate = now.toISOString().replace(/[:.]/g, '-').slice(0, 23)
   const slug = slugify(reason || 'config-change')
   const fileName = `${fileDate}_${slug}.md`
   const filePath = resolve(LOGS_DIR, fileName)
