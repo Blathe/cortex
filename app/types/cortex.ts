@@ -61,6 +61,27 @@ export interface CortexJobLog {
   timestamp: string
 }
 
+export interface AgentSettings {
+  version: number
+  persona: {
+    name: string
+    tone: string
+    verbosity: string
+  }
+  reasoning: {
+    temperature: number
+    maxTokens: number
+  }
+  git: {
+    autoPush: boolean
+    autoMerge: boolean
+  }
+  meta: {
+    updatedAt: string
+    updatedBy: string
+  }
+}
+
 export interface AgentChangeLog {
   filename: string
   timestamp: string
