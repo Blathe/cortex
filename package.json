@@ -1,34 +1,35 @@
 {
-  "name": "cortex",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "build": "nuxt build",
-    "dev": "nuxt dev",
-    "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
-    "lint": "eslint .",
-    "typecheck": "nuxt typecheck",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
-  "dependencies": {
-    "@iconify-json/lucide": "^1.2.90",
-    "@iconify-json/simple-icons": "^1.2.70",
-    "@nuxt/ui": "^4.4.0",
-    "dompurify": "^3.3.1",
-    "marked": "^17.0.3",
-    "nuxt": "^4.3.1",
-    "tailwindcss": "^4.1.18"
-  },
-  "devDependencies": {
-    "@nuxt/eslint": "^1.15.1",
-    "@types/node": "^25.3.0",
-    "eslint": "^10.0.0",
-    "h3": "1.15.5",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18",
-    "vue-tsc": "^3.2.4"
-  },
-  "packageManager": "pnpm@10.29.3"
+    "name": "cortex",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "nuxt build",
+        "build-docker": "npm run lint && npm run typecheck && npm run test && docker compose up -d --build",
+        "dev": "nuxt dev",
+        "preview": "nuxt preview",
+        "postinstall": "nuxt prepare",
+        "lint": "eslint .",
+        "typecheck": "nuxt typecheck",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "dependencies": {
+        "@iconify-json/lucide": "^1.2.90",
+        "@iconify-json/simple-icons": "^1.2.70",
+        "@nuxt/ui": "^4.4.0",
+        "dompurify": "^3.3.1",
+        "marked": "^17.0.3",
+        "nuxt": "^4.3.1",
+        "tailwindcss": "^4.1.18"
+    },
+    "devDependencies": {
+        "@nuxt/eslint": "^1.15.1",
+        "@types/node": "^25.3.0",
+        "eslint": "^10.0.0",
+        "h3": "1.15.5",
+        "typescript": "^5.9.3",
+        "vitest": "^4.0.18",
+        "vue-tsc": "^3.2.4"
+    },
+    "packageManager": "pnpm@10.29.3"
 }
