@@ -6,7 +6,7 @@ Cortex is a self-hosted dashboard for running and managing an autonomous AI agen
 
 The agent's behavior is defined in a versioned `settings.json` file. Any change made through the UI is automatically committed to a new git branch and opened as a GitHub PR — so every tweak to the agent's tone, temperature, or automation settings goes through version control with a human-readable changelog entry.
 
-Cortex is designed to run locally or be deployed via Docker with a public ngrok tunnel, making it easy to expose the agent to external services or test webhooks without a dedicated server.
+Cortex is designed to run locally, on a VPS, or in a docker container with ngrok tunneling, making it easy to expose the agent to external services or test webhooks without a dedicated server.
 
 ## Features
 
@@ -17,6 +17,26 @@ Cortex is designed to run locally or be deployed via Docker with a public ngrok 
 - **Job tracking** — dashboard, logs, and cron views for monitoring agent activity
 - **Auth & security** — token-based auth with encrypted storage at rest, signed session cookies, and rate limiting
 - **Mock mode** — works out of the box without an API key for local development
+
+## Security Notice
+
+> **Keep your Cortex repository private.** The repo may contain your agent's system prompt, behavioral config, and changelog entries that reveal how your agent is instructed and what it has done. Exposing this publicly could allow others to reverse-engineer or manipulate your agent's behavior.
+
+Additionally, set `CORTEX_SETUP_SECRET` and `CORTEX_TOKEN_ENCRYPTION_KEY` before deploying to any shared or internet-facing environment (see [Environment Variables](#environment-variables)).
+
+## LLM Provider API Keys
+
+Cortex requires at least one LLM provider API key for chat and autonomous agent functionality. Mock mode is available for local development without a key, but all real interactions route through a configured provider.
+
+Supported providers are configured via the UI at `/config/providers`. You will need an API key from one or more of the following:
+
+| Provider | Where to get a key |
+|---|---|
+| OpenAI | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Anthropic | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) |
+| Google Gemini | [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey) |
+
+Keys are stored server-side and never exposed to the browser after submission.
 
 ## Prerequisites
 
