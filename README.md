@@ -2,7 +2,11 @@
 
 # Cortex
 
-A Nuxt.js 4 dashboard for interacting with an autonomous AI agent. Chat with the agent, configure its behavior, and track jobs — all from a single interface.
+Cortex is a self-hosted dashboard for running and managing an autonomous AI agent. It gives you a real-time chat interface to send prompts and receive streamed responses, a configuration UI to shape the agent's persona and reasoning, and a job-tracking system to monitor what the agent is doing over time.
+
+The agent's behavior is defined in a versioned `settings.json` file. Any change made through the UI is automatically committed to a new git branch and opened as a GitHub PR — so every tweak to the agent's tone, temperature, or automation settings goes through version control with a human-readable changelog entry.
+
+Cortex is designed to run locally or be deployed via Docker with a public ngrok tunnel, making it easy to expose the agent to external services or test webhooks without a dedicated server.
 
 ## Features
 
