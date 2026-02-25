@@ -1,0 +1,15 @@
+.git
+.gitworktrees
+.nuxt
+.output
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+Dockerfile*
+docker-compose*.yml
+agent/logs
+agent/config/auth.json
+agent/config/providers.json
+.env
+.env.*
+!.env.example
