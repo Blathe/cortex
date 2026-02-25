@@ -3,6 +3,7 @@ import type {
   ProviderCredentialStatus,
   ProviderId,
   ProviderMigrationWarning,
+  ProviderModelEntry,
   ProviderRuntimeState
 } from '~/types/cortex'
 
@@ -19,12 +20,17 @@ interface ValidateProviderResponse {
   message?: string
 }
 
+interface OllamaModelsResponse {
+  models: ProviderModelEntry[]
+}
+
 export const useCortexProviders = () => {
   const catalog = useState<ProviderCatalogEntry[]>('cortex.providers.catalog', () => [])
   const credentials = useState<Record<ProviderId, ProviderCredentialStatus>>('cortex.providers.credentials', () => ({
     openai: { configured: false, tokenPreview: null },
     anthropic: { configured: false, tokenPreview: null },
-    groq: { configured: false, tokenPreview: null }
+    groq: { configured: false, tokenPreview: null },
+    ollama: { configured: false, tokenPreview: null }
   }))
   const active = useState<ProviderRuntimeState | null>('cortex.providers.active', () => null)
   const migrationWarnings = useState<ProviderMigrationWarning[]>('cortex.providers.warnings', () => [])
@@ -69,6 +75,11 @@ export const useCortexProviders = () => {
     })
   }
 
+  const fetchOllamaModels = async (): Promise<ProviderModelEntry[]> => {
+    const res = await $fetch<OllamaModelsResponse>('/api/agent/providers/ollama-models')
+    return res.models
+  }
+
   const getProviderById = (providerId: ProviderId) => {
     return catalog.value.find(provider => provider.providerId === providerId)
   }
@@ -81,6 +92,10 @@ export const useCortexProviders = () => {
   const isLiveMode = computed(() => {
     if (!active.value) {
       return false
+    }
+    const provider = catalog.value.find(p => p.providerId === active.value!.providerId)
+    if (provider?.authStrategy === 'none') {
+      return true
     }
     return credentials.value[active.value.providerId]?.configured === true
   })
@@ -96,6 +111,7 @@ export const useCortexProviders = () => {
     setActive,
     saveCredential,
     validateConnection,
+    fetchOllamaModels,
     getProviderById,
     getModelLabel
   }

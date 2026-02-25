@@ -1,4 +1,4 @@
-export type ProviderId = 'openai' | 'anthropic' | 'groq'
+export type ProviderId = 'openai' | 'anthropic' | 'groq' | 'ollama'
 
 export interface ProviderModelEntry {
   id: string
@@ -9,7 +9,7 @@ export interface ProviderCatalogEntry {
   providerId: ProviderId
   label: string
   baseUrl: string
-  authStrategy: 'bearer' | 'x-api-key'
+  authStrategy: 'bearer' | 'x-api-key' | 'none'
   defaultModel: string
   models: ProviderModelEntry[]
 }
@@ -51,6 +51,14 @@ export const PROVIDER_CATALOG: Record<ProviderId, ProviderCatalogEntry> = {
       { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' },
       { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B 32k' }
     ]
+  },
+  ollama: {
+    providerId: 'ollama',
+    label: 'Ollama (Local)',
+    baseUrl: process.env.OLLAMA_HOST ?? 'http://localhost:11434',
+    authStrategy: 'none',
+    defaultModel: '',
+    models: []
   }
 }
 
@@ -68,6 +76,13 @@ export const getDefaultModel = (providerId: ProviderId): string => {
   return PROVIDER_CATALOG[providerId].defaultModel
 }
 
+export const isKeylessProvider = (providerId: ProviderId): boolean => {
+  return PROVIDER_CATALOG[providerId].authStrategy === 'none'
+}
+
 export const isModelAllowed = (providerId: ProviderId, modelId: string): boolean => {
+  if (isKeylessProvider(providerId)) {
+    return modelId.trim().length > 0
+  }
   return PROVIDER_CATALOG[providerId].models.some(model => model.id === modelId)
 }

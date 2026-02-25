@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createError, defineEventHandler, readBody } from 'h3'
 import { readSettings } from '../utils/agentConfig'
-import { isModelAllowed, isProviderId } from '../utils/providerCatalog'
+import { isKeylessProvider, isModelAllowed, isProviderId } from '../utils/providerCatalog'
 import { readProviders } from '../utils/providerConfig'
 import { requestProviderChatCompletion } from '../utils/providerRuntime'
 
@@ -85,7 +85,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const apiKey = providersConfig.credentials[providerId]?.apiKey?.trim() || ''
-  if (!apiKey) {
+  if (!apiKey && !isKeylessProvider(providerId)) {
     throw createError({ statusCode: 400, statusMessage: `No API key configured for active provider "${providerId}".` })
   }
 

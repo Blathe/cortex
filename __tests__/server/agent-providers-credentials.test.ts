@@ -30,7 +30,8 @@ describe('POST /api/agent/providers/credentials', () => {
       credentials: {
         openai: { apiKey: '' },
         anthropic: { apiKey: '' },
-        groq: { apiKey: '' }
+        groq: { apiKey: '' },
+        ollama: { apiKey: '' }
       },
       active: null,
       migrationWarnings: []
@@ -64,7 +65,8 @@ describe('POST /api/agent/providers/credentials', () => {
       credentials: {
         openai: { apiKey: 'sk-existing' },
         anthropic: { apiKey: '' },
-        groq: { apiKey: '' }
+        groq: { apiKey: '' },
+        ollama: { apiKey: '' }
       },
       active: null,
       migrationWarnings: []

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { StepperItem } from '@nuxt/ui'
-import type { ProviderId } from '~/types/cortex'
+import type { ProviderId, ProviderModelEntry } from '~/types/cortex'
 
-const { catalog, loadProviders, setActive, saveCredential, validateConnection, getProviderById } = useCortexProviders()
+const { catalog, loadProviders, setActive, saveCredential, validateConnection, fetchOllamaModels, getProviderById } = useCortexProviders()
 const { saveToken } = useCortexAuth()
 
 const currentStep = ref<number>(0)
@@ -25,6 +25,11 @@ const providerForm = reactive({
   modelId: 'gpt-4o-mini',
   apiKey: ''
 })
+
+// Step 2 — Ollama state
+const ollamaModels = ref<ProviderModelEntry[]>([])
+const ollamaStatus = ref<'unknown' | 'checking' | 'ok' | 'error'>('unknown')
+const ollamaError = ref<string | null>(null)
 
 // Step 3 — GitHub
 const githubForm = reactive({
@@ -107,8 +112,10 @@ const clearDraft = () => {
 }
 
 const isProviderId = (value: unknown): value is ProviderId => {
-  return value === 'openai' || value === 'anthropic' || value === 'groq'
+  return value === 'openai' || value === 'anthropic' || value === 'groq' || value === 'ollama'
 }
+
+const isOllamaSelected = computed(() => providerForm.providerId === 'ollama')
 
 const providerItems = computed(() =>
   catalog.value.map(provider => ({ label: provider.label, value: provider.providerId }))
@@ -116,9 +123,31 @@ const providerItems = computed(() =>
 
 const selectedProvider = computed(() => getProviderById(providerForm.providerId))
 
-const modelItems = computed(() =>
-  (selectedProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
-)
+const modelItems = computed(() => {
+  if (isOllamaSelected.value) {
+    return ollamaModels.value.map(model => ({ label: model.label, value: model.id }))
+  }
+  return (selectedProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
+})
+
+const probeOllama = async () => {
+  ollamaStatus.value = 'checking'
+  ollamaError.value = null
+  try {
+    const models = await fetchOllamaModels()
+    ollamaModels.value = models
+    ollamaStatus.value = 'ok'
+    if (models[0] && !providerForm.modelId) {
+      providerForm.modelId = models[0].id
+    } else if (models[0] && !models.some(m => m.id === providerForm.modelId)) {
+      providerForm.modelId = models[0].id
+    }
+  } catch (e) {
+    const err = e as { statusMessage?: string, message?: string }
+    ollamaStatus.value = 'error'
+    ollamaError.value = err.statusMessage ?? err.message ?? 'Ollama is not reachable.'
+  }
+}
 
 const applyProviderDefaults = () => {
   const first = catalog.value[0]
@@ -133,6 +162,10 @@ const applyProviderDefaults = () => {
 
   const provider = getProviderById(providerForm.providerId)
   if (!provider) {
+    return
+  }
+
+  if (provider.authStrategy === 'none') {
     return
   }
 
@@ -171,6 +204,9 @@ const normalizeRestoredStep = async () => {
   try {
     await loadProviders()
     applyProviderDefaults()
+    if (isOllamaSelected.value) {
+      await probeOllama()
+    }
   } catch {
     currentStep.value = 1
   }
@@ -209,13 +245,15 @@ const goNext = async () => {
       await loadProviders()
       applyProviderDefaults()
     } else if (currentStep.value === 2) {
-      const apiKey = providerForm.apiKey.trim()
-      await validateConnection(providerForm.providerId, providerForm.modelId, apiKey || undefined)
-
-      if (apiKey) {
-        await saveCredential(providerForm.providerId, apiKey)
+      if (isOllamaSelected.value) {
+        await validateConnection(providerForm.providerId, providerForm.modelId)
+      } else {
+        const apiKey = providerForm.apiKey.trim()
+        await validateConnection(providerForm.providerId, providerForm.modelId, apiKey || undefined)
+        if (apiKey) {
+          await saveCredential(providerForm.providerId, apiKey)
+        }
       }
-
       await setActive(providerForm.providerId, providerForm.modelId)
     } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []
@@ -280,6 +318,9 @@ const goBack = () => {
 
 watch(() => providerForm.providerId, () => {
   applyProviderDefaults()
+  if (isOllamaSelected.value) {
+    probeOllama()
+  }
 })
 
 onMounted(async () => {
@@ -468,7 +509,7 @@ onMounted(async () => {
               LLM Provider
             </h2>
             <p class="mb-6 text-sm text-muted">
-              Select a provider and model from the supported catalog. Base URLs are managed automatically.
+              Select a provider and model. For Ollama, models are pulled locally via <code>ollama pull</code>.
             </p>
             <div class="space-y-4">
               <UFormField label="Provider">
@@ -479,15 +520,74 @@ onMounted(async () => {
                   class="w-full"
                 />
               </UFormField>
+
+              <!-- Ollama status indicator -->
+              <div
+                v-if="isOllamaSelected"
+                class="flex items-center gap-3"
+              >
+                <UBadge
+                  v-if="ollamaStatus === 'checking'"
+                  label="Checking..."
+                  color="neutral"
+                  variant="subtle"
+                  icon="i-lucide-loader"
+                />
+                <UBadge
+                  v-else-if="ollamaStatus === 'ok'"
+                  label="Ollama running"
+                  color="success"
+                  variant="subtle"
+                  icon="i-lucide-circle-check"
+                />
+                <UBadge
+                  v-else-if="ollamaStatus === 'error'"
+                  label="Ollama unreachable"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-circle-x"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-refresh-cw"
+                  :loading="ollamaStatus === 'checking'"
+                  @click="probeOllama"
+                >
+                  Retry
+                </UButton>
+              </div>
+
+              <UAlert
+                v-if="isOllamaSelected && ollamaStatus === 'error'"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-terminal"
+                title="Ollama is not reachable"
+                :description="ollamaError ?? 'Start Ollama with: ollama serve'"
+              />
+
               <UFormField label="Model">
                 <USelect
                   v-model="providerForm.modelId"
                   :items="modelItems"
                   value-key="value"
+                  :disabled="isOllamaSelected && ollamaStatus !== 'ok'"
                   class="w-full"
                 />
+                <template
+                  v-if="isOllamaSelected && ollamaStatus === 'ok' && modelItems.length === 0"
+                  #description
+                >
+                  <span class="text-warning">No models installed. Run <code>ollama pull &lt;model&gt;</code> first.</span>
+                </template>
               </UFormField>
-              <UFormField label="API Key">
+
+              <UFormField
+                v-if="!isOllamaSelected"
+                label="API Key"
+              >
                 <UInput
                   v-model="providerForm.apiKey"
                   type="password"
@@ -495,9 +595,15 @@ onMounted(async () => {
                   class="w-full"
                 />
               </UFormField>
+
               <p class="text-xs text-muted">
-                Selected provider endpoint:
-                <code>{{ selectedProvider?.baseUrl || 'unavailable' }}</code>
+                <template v-if="isOllamaSelected">
+                  Endpoint: <code>{{ selectedProvider?.baseUrl || 'http://localhost:11434' }}</code>
+                  — set <code>OLLAMA_HOST</code> to override
+                </template>
+                <template v-else>
+                  Selected provider endpoint: <code>{{ selectedProvider?.baseUrl || 'unavailable' }}</code>
+                </template>
               </p>
             </div>
           </div>
