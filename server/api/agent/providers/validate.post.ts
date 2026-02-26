@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from 'h3'
-import { isModelAllowed, isProviderId, type ProviderId } from '../../../utils/providerCatalog'
+import { isKeylessProvider, isModelAllowed, isProviderId, type ProviderId } from '../../../utils/providerCatalog'
 import { readProviders } from '../../../utils/providerConfig'
 import { validateProviderCredentials } from '../../../utils/providerRuntime'
 
@@ -13,7 +13,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<ValidatePostBody>(event)
 
   if (typeof body.providerId !== 'string' || !isProviderId(body.providerId)) {
-    throw createError({ statusCode: 400, statusMessage: 'providerId must be one of: openai, anthropic, groq.' })
+    throw createError({ statusCode: 400, statusMessage: 'providerId must be one of: openai, anthropic, groq, ollama.' })
   }
   if (typeof body.modelId !== 'string' || !body.modelId.trim()) {
     throw createError({ statusCode: 400, statusMessage: 'modelId is required.' })
@@ -29,6 +29,11 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: `Model "${modelId}" is not valid for provider "${providerId}".`
     })
+  }
+
+  if (isKeylessProvider(providerId)) {
+    await validateProviderCredentials(providerId, modelId)
+    return { ok: true, mode: 'live' }
   }
 
   const config = await readProviders()

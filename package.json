@@ -20,6 +20,7 @@
         "dompurify": "^3.3.1",
         "marked": "^17.0.3",
         "nuxt": "^4.3.1",
+        "ollama": "^0.6.3",
         "tailwindcss": "^4.1.18"
     },
     "devDependencies": {

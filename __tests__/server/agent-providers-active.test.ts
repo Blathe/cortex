@@ -30,7 +30,8 @@ describe('POST /api/agent/providers/active', () => {
       credentials: {
         openai: { apiKey: '' },
         anthropic: { apiKey: '' },
-        groq: { apiKey: '' }
+        groq: { apiKey: '' },
+        ollama: { apiKey: '' }
       },
       active: null,
       migrationWarnings: []

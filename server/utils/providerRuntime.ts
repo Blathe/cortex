@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import { getProviderById, type ProviderId } from './providerCatalog'
+import { listOllamaModels, requestOllamaCompletion } from './ollamaRuntime'
 
 interface OpenAIChatCompletionResponse {
   choices?: Array<{
@@ -19,7 +20,7 @@ interface AnthropicMessageResponse {
 interface ProviderRequestOptions {
   providerId: ProviderId
   modelId: string
-  apiKey: string
+  apiKey?: string
   prompt: string
   systemPrompt?: string
   temperature?: number
@@ -89,7 +90,7 @@ const requestOpenAICompatible = async (opts: ProviderRequestOptions): Promise<st
     const response = await $fetch<OpenAIChatCompletionResponse>(`${provider.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
-        'authorization': `Bearer ${opts.apiKey}`,
+        'authorization': `Bearer ${opts.apiKey ?? ''}`,
         'content-type': 'application/json'
       },
       body: {
@@ -121,7 +122,7 @@ const requestAnthropic = async (opts: ProviderRequestOptions): Promise<string> =
     const response = await $fetch<AnthropicMessageResponse>(`${provider.baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
-        'x-api-key': opts.apiKey,
+        'x-api-key': opts.apiKey ?? '',
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json'
       },
@@ -147,8 +148,20 @@ const requestAnthropic = async (opts: ProviderRequestOptions): Promise<string> =
 export const validateProviderCredentials = async (
   providerId: ProviderId,
   modelId: string,
-  apiKey: string
+  apiKey?: string
 ): Promise<void> => {
+  if (providerId === 'ollama') {
+    const models = await listOllamaModels()
+    const isInstalled = models.some(m => m.id === modelId)
+    if (!isInstalled) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Model "${modelId}" is not installed in Ollama. Run: ollama pull ${modelId}`
+      })
+    }
+    return
+  }
+
   const prompt = 'Respond with the single word "ok".'
 
   if (providerId === 'anthropic') {
@@ -174,6 +187,16 @@ export const validateProviderCredentials = async (
 }
 
 export const requestProviderChatCompletion = async (opts: ProviderRequestOptions): Promise<string> => {
+  if (opts.providerId === 'ollama') {
+    return requestOllamaCompletion({
+      modelId: opts.modelId,
+      prompt: opts.prompt,
+      systemPrompt: opts.systemPrompt,
+      temperature: opts.temperature,
+      maxTokens: opts.maxTokens
+    })
+  }
+
   if (opts.providerId === 'anthropic') {
     return requestAnthropic(opts)
   }

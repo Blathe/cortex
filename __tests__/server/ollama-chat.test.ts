@@ -36,7 +36,7 @@ const post = (h: ReturnType<typeof toWebHandler>, body: unknown) =>
     headers: { 'content-type': 'application/json' }
   }))
 
-describe('POST /api/chat provider runtime resolution', () => {
+describe('POST /api/chat — Ollama (keyless)', () => {
   beforeEach(() => {
     vi.mocked(readSettings).mockResolvedValue({
       version: 1,
@@ -45,11 +45,11 @@ describe('POST /api/chat provider runtime resolution', () => {
       git: { autoPush: true, autoMerge: true },
       meta: { onboarded: true, updatedAt: new Date().toISOString(), updatedBy: 'user', revision: 1 }
     })
-    vi.mocked(requestProviderChatCompletion).mockResolvedValue('hello from provider')
+    vi.mocked(requestProviderChatCompletion).mockResolvedValue('hello from ollama')
     vi.mocked(requestProviderChatCompletion).mockClear()
   })
 
-  it('rejects when there is no active runtime', async () => {
+  it('succeeds with Ollama active even when apiKey is empty', async () => {
     vi.mocked(readProviders).mockResolvedValue({
       version: 2,
       credentials: {
@@ -58,16 +58,20 @@ describe('POST /api/chat provider runtime resolution', () => {
         groq: { apiKey: '' },
         ollama: { apiKey: '' }
       },
-      active: null,
+      active: { providerId: 'ollama', modelId: 'llama3.2:latest' },
       migrationWarnings: []
     })
 
     const handle = makeApp()
     const res = await post(handle, { prompt: 'hello' })
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(200)
+    expect(requestProviderChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      providerId: 'ollama',
+      modelId: 'llama3.2:latest'
+    }))
   })
 
-  it('rejects when active provider has no API key', async () => {
+  it('rejects non-Ollama providers that still have no API key', async () => {
     vi.mocked(readProviders).mockResolvedValue({
       version: 2,
       credentials: {
@@ -83,32 +87,6 @@ describe('POST /api/chat provider runtime resolution', () => {
     const handle = makeApp()
     const res = await post(handle, { prompt: 'hello' })
     expect(res.status).toBe(400)
-  })
-
-  it('uses server-side active provider/model even when client sends extra fields', async () => {
-    vi.mocked(readProviders).mockResolvedValue({
-      version: 2,
-      credentials: {
-        openai: { apiKey: '' },
-        anthropic: { apiKey: 'anthropic-key' },
-        groq: { apiKey: '' },
-        ollama: { apiKey: '' }
-      },
-      active: { providerId: 'anthropic', modelId: 'claude-3-5-sonnet-latest' },
-      migrationWarnings: []
-    })
-
-    const handle = makeApp()
-    const res = await post(handle, {
-      prompt: 'hello',
-      provider: 'openai',
-      model: 'gpt-4o'
-    })
-    expect(res.status).toBe(200)
-    expect(requestProviderChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
-      providerId: 'anthropic',
-      modelId: 'claude-3-5-sonnet-latest',
-      apiKey: 'anthropic-key'
-    }))
+    expect(requestProviderChatCompletion).not.toHaveBeenCalled()
   })
 })

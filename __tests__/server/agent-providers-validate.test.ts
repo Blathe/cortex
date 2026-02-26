@@ -34,7 +34,8 @@ describe('POST /api/agent/providers/validate', () => {
       credentials: {
         openai: { apiKey: 'stored-key' },
         anthropic: { apiKey: '' },
-        groq: { apiKey: '' }
+        groq: { apiKey: '' },
+        ollama: { apiKey: '' }
       },
       active: null,
       migrationWarnings: []
