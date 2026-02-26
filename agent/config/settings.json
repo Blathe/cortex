@@ -2,8 +2,8 @@
   "version": 1,
   "persona": {
     "name": "Cortex",
-    "tone": "professional",
-    "verbosity": "medium"
+    "tone": "casual",
+    "verbosity": "low"
   },
   "reasoning": {
     "temperature": 0.7,
@@ -15,8 +15,8 @@
   },
   "meta": {
     "onboarded": true,
-    "updatedAt": "2026-02-26T18:30:24.020Z",
+    "updatedAt": "2026-02-26T20:19:52.602Z",
     "updatedBy": "user",
-    "revision": 5
+    "revision": 6
   }
 }
