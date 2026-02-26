@@ -8,7 +8,7 @@
         "dev": "nuxt dev",
         "preview": "nuxt preview",
         "postinstall": "nuxt prepare",
-        "lint": "eslint .",
+        "lint": "eslint . --fix",
         "typecheck": "nuxt typecheck",
         "test": "vitest run",
         "test:watch": "vitest"
