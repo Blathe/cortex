@@ -25,7 +25,8 @@ describe('GET /api/agent/providers', () => {
       credentials: {
         openai: { apiKey: 'sk-abcdefghijklmnopqrstuvwxyz' },
         anthropic: { apiKey: '' },
-        groq: { apiKey: '' }
+        groq: { apiKey: '' },
+        ollama: { apiKey: '' }
       },
       active: { providerId: 'openai', modelId: 'gpt-4o-mini' },
       migrationWarnings: []

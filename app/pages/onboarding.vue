@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { StepperItem } from '@nuxt/ui'
-import type { ProviderId } from '~/types/cortex'
+import type { ProviderId, ProviderModelEntry } from '~/types/cortex'
 
-const { catalog, loadProviders, setActive, saveCredential, validateConnection, getProviderById } = useCortexProviders()
-const { saveToken } = useCortexAuth()
+definePageMeta({ layout: false })
+
+const { catalog, loadProviders, setActive, saveCredential, validateConnection, fetchOllamaModels, getProviderById } = useCortexProviders()
 
 const currentStep = ref<number>(0)
 const isDone = ref(false)
@@ -13,11 +14,19 @@ const ONBOARDING_STATE_KEY = 'cortex.onboarding.state.v2'
 const ONBOARDED_CACHE_KEY = 'cortex.onboarded'
 const MAX_STEP = 4
 
-// Step 1 — Authentication
-const tokenMode = ref<'generate' | 'paste'>('generate')
-const setupSecret = ref('')
-const pastedToken = ref('')
-const generatedToken = ref('')
+// Step 1 — PIN setup
+const pinValue = ref('')
+const pinConfirm = ref('')
+const recoveryCode = ref<string | null>(null)
+const recoveryAcknowledged = ref(false)
+const sessionTtlSeconds = ref(60 * 60 * 8) // default 8h
+
+const sessionTtlOptions = [
+  { label: '1 hour', value: 60 * 60 },
+  { label: '8 hours (default)', value: 60 * 60 * 8 },
+  { label: '24 hours', value: 60 * 60 * 24 },
+  { label: '7 days', value: 60 * 60 * 24 * 7 }
+]
 
 // Step 2 — LLM Provider
 const providerForm = reactive({
@@ -25,6 +34,11 @@ const providerForm = reactive({
   modelId: 'gpt-4o-mini',
   apiKey: ''
 })
+
+// Step 2 — Ollama state
+const ollamaModels = ref<ProviderModelEntry[]>([])
+const ollamaStatus = ref<'unknown' | 'checking' | 'ok' | 'error'>('unknown')
+const ollamaError = ref<string | null>(null)
 
 // Step 3 — GitHub
 const githubForm = reactive({
@@ -41,7 +55,7 @@ const personaForm = reactive({
 
 const steps = ref<StepperItem[]>([
   { title: 'Welcome', description: 'Introduction', icon: 'i-lucide-sparkles' },
-  { title: 'Authentication', description: 'Secure access', icon: 'i-lucide-key-round' },
+  { title: 'PIN Setup', description: 'Secure access', icon: 'i-lucide-shield-check' },
   { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
   { title: 'GitHub', description: 'Repository credentials', icon: 'i-lucide-github' },
   { title: 'Persona', description: 'Agent behavior', icon: 'i-lucide-bot' }
@@ -62,7 +76,6 @@ const verbosityOptions = [
 
 interface OnboardingDraft {
   currentStep: number
-  tokenMode: 'generate' | 'paste'
   provider: {
     providerId: ProviderId
     modelId: string
@@ -81,7 +94,6 @@ const clampStep = (value: number) => Math.min(Math.max(value, 0), MAX_STEP)
 
 const buildDraft = (): OnboardingDraft => ({
   currentStep: currentStep.value,
-  tokenMode: tokenMode.value,
   provider: {
     providerId: providerForm.providerId,
     modelId: providerForm.modelId
@@ -107,8 +119,10 @@ const clearDraft = () => {
 }
 
 const isProviderId = (value: unknown): value is ProviderId => {
-  return value === 'openai' || value === 'anthropic' || value === 'groq'
+  return value === 'openai' || value === 'anthropic' || value === 'groq' || value === 'ollama'
 }
+
+const isOllamaSelected = computed(() => providerForm.providerId === 'ollama')
 
 const providerItems = computed(() =>
   catalog.value.map(provider => ({ label: provider.label, value: provider.providerId }))
@@ -116,9 +130,31 @@ const providerItems = computed(() =>
 
 const selectedProvider = computed(() => getProviderById(providerForm.providerId))
 
-const modelItems = computed(() =>
-  (selectedProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
-)
+const modelItems = computed(() => {
+  if (isOllamaSelected.value) {
+    return ollamaModels.value.map(model => ({ label: model.label, value: model.id }))
+  }
+  return (selectedProvider.value?.models ?? []).map(model => ({ label: model.label, value: model.id }))
+})
+
+const probeOllama = async () => {
+  ollamaStatus.value = 'checking'
+  ollamaError.value = null
+  try {
+    const models = await fetchOllamaModels()
+    ollamaModels.value = models
+    ollamaStatus.value = 'ok'
+    if (models[0] && !providerForm.modelId) {
+      providerForm.modelId = models[0].id
+    } else if (models[0] && !models.some(m => m.id === providerForm.modelId)) {
+      providerForm.modelId = models[0].id
+    }
+  } catch (e) {
+    const err = e as { statusMessage?: string, message?: string }
+    ollamaStatus.value = 'error'
+    ollamaError.value = err.statusMessage ?? err.message ?? 'Ollama is not reachable.'
+  }
+}
 
 const applyProviderDefaults = () => {
   const first = catalog.value[0]
@@ -136,6 +172,10 @@ const applyProviderDefaults = () => {
     return
   }
 
+  if (provider.authStrategy === 'none') {
+    return
+  }
+
   const modelAllowed = provider.models.some(model => model.id === providerForm.modelId)
   if (!modelAllowed) {
     providerForm.modelId = provider.defaultModel
@@ -150,7 +190,6 @@ const restoreDraft = () => {
   try {
     const parsed = JSON.parse(raw) as Partial<OnboardingDraft>
     currentStep.value = clampStep(Number(parsed.currentStep ?? 0))
-    tokenMode.value = parsed.tokenMode === 'paste' ? 'paste' : 'generate'
     if (isProviderId(parsed.provider?.providerId)) {
       providerForm.providerId = parsed.provider.providerId
     }
@@ -171,33 +210,51 @@ const normalizeRestoredStep = async () => {
   try {
     await loadProviders()
     applyProviderDefaults()
+    if (isOllamaSelected.value) {
+      await probeOllama()
+    }
   } catch {
     currentStep.value = 1
   }
 }
 
-const authenticateSession = async () => {
-  if (tokenMode.value === 'paste') {
-    const token = pastedToken.value.trim()
-    if (!token) {
-      throw new Error('Paste your existing token to continue.')
-    }
-    await saveToken(token)
-    return
+const setupPin = async () => {
+  const pin = pinValue.value.trim()
+  const confirm = pinConfirm.value.trim()
+
+  if (!/^\d{6}$/.test(pin)) {
+    throw new Error('PIN must be exactly 6 digits.')
   }
 
-  const headers: Record<string, string> = {}
-  const secret = setupSecret.value.trim()
-  if (secret) {
-    headers['x-cortex-setup-secret'] = secret
+  if (pin !== confirm) {
+    throw new Error('PINs do not match.')
   }
 
-  const res = await $fetch<{ token?: string }>('/api/agent/auth/generate', {
+  // Phase 1 — recovery code not yet shown: generate it client-side and pause for acknowledgement.
+  // Nothing is saved to the server yet, so a page refresh at this point is harmless.
+  if (!recoveryCode.value) {
+    const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    const bytes = new Uint8Array(16)
+    crypto.getRandomValues(bytes)
+    recoveryCode.value = Array.from(bytes).map(b => CHARS[b % CHARS.length]!).join('')
+    throw new Error('__recovery_code_shown__')
+  }
+
+  // Phase 2 — recovery code shown but not acknowledged: block advance.
+  if (!recoveryAcknowledged.value) {
+    throw new Error('Please confirm you have saved the recovery code before continuing.')
+  }
+
+  // Phase 3 — acknowledged: atomically save PIN + hashed recovery code on the server.
+  await $fetch('/api/agent/auth/setup', {
     method: 'POST',
-    headers,
-    body: { revealToken: false }
+    body: {
+      pin,
+      confirmPin: confirm,
+      recoveryCode: recoveryCode.value,
+      sessionTtlSeconds: sessionTtlSeconds.value
+    }
   })
-  generatedToken.value = res.token ?? ''
 }
 
 const goNext = async () => {
@@ -205,17 +262,19 @@ const goNext = async () => {
   isLoading.value = true
   try {
     if (currentStep.value === 1) {
-      await authenticateSession()
+      await setupPin()
       await loadProviders()
       applyProviderDefaults()
     } else if (currentStep.value === 2) {
-      const apiKey = providerForm.apiKey.trim()
-      await validateConnection(providerForm.providerId, providerForm.modelId, apiKey || undefined)
-
-      if (apiKey) {
-        await saveCredential(providerForm.providerId, apiKey)
+      if (isOllamaSelected.value) {
+        await validateConnection(providerForm.providerId, providerForm.modelId)
+      } else {
+        const apiKey = providerForm.apiKey.trim()
+        await validateConnection(providerForm.providerId, providerForm.modelId, apiKey || undefined)
+        if (apiKey) {
+          await saveCredential(providerForm.providerId, apiKey)
+        }
       }
-
       await setActive(providerForm.providerId, providerForm.modelId)
     } else if (currentStep.value === 3) {
       const vars: { key: string, value: string }[] = []
@@ -234,10 +293,10 @@ const goNext = async () => {
     }
   } catch (e) {
     const err = e as { statusCode?: number, statusMessage?: string, message?: string }
-    if (currentStep.value === 1 && err.statusCode === 401) {
-      error.value = 'This server already has a token. Choose "Use existing token", paste it, and continue.'
-    } else if (currentStep.value === 1 && err.statusCode === 403) {
-      error.value = 'Setup secret is required or invalid. Enter CORTEX_SETUP_SECRET and try again.'
+    if (err.message === '__recovery_code_shown__') {
+      // Recovery code was just revealed — stay on step 1, no error
+    } else if (currentStep.value === 1 && err.statusCode === 409) {
+      error.value = 'A PIN is already configured on this server. It may have been set up previously.'
     } else {
       error.value = err.statusMessage ?? err.message ?? 'Something went wrong.'
     }
@@ -280,6 +339,9 @@ const goBack = () => {
 
 watch(() => providerForm.providerId, () => {
   applyProviderDefaults()
+  if (isOllamaSelected.value) {
+    probeOllama()
+  }
 })
 
 onMounted(async () => {
@@ -357,10 +419,10 @@ onMounted(async () => {
             <ul class="mb-6 space-y-3 text-sm text-default">
               <li class="flex items-center gap-2">
                 <UIcon
-                  name="i-lucide-key-round"
+                  name="i-lucide-shield-check"
                   class="size-4 shrink-0 text-primary"
                 />
-                Authenticating your session
+                Setting up a PIN for secure access
               </li>
               <li class="flex items-center gap-2">
                 <UIcon
@@ -386,80 +448,86 @@ onMounted(async () => {
             </ul>
           </div>
 
-          <!-- Step 1: Authentication -->
+          <!-- Step 1: PIN Setup -->
           <div v-else-if="currentStep === 1">
-            <h2 class="mb-2 text-xl font-semibold text-highlighted">
-              Authentication
-            </h2>
-            <p class="mb-4 text-sm text-muted">
-              Protected setup endpoints require authentication before configuration changes can be saved.
-            </p>
-
-            <div class="mb-4 flex gap-2">
-              <UButton
-                :variant="tokenMode === 'generate' ? 'solid' : 'outline'"
-                color="neutral"
-                @click="tokenMode = 'generate'"
-              >
-                Generate token
-              </UButton>
-              <UButton
-                :variant="tokenMode === 'paste' ? 'solid' : 'outline'"
-                color="neutral"
-                @click="tokenMode = 'paste'"
-              >
-                Use existing token
-              </UButton>
-            </div>
-
-            <div
-              v-if="tokenMode === 'generate'"
-              class="space-y-4"
-            >
-              <UFormField
-                label="Setup Secret"
-                description="If CORTEX_SETUP_SECRET is configured on the server, enter it here."
-                hint="Optional when no setup secret is configured"
-              >
-                <UInput
-                  v-model="setupSecret"
-                  type="password"
-                  placeholder="Paste setup secret"
-                  class="w-full"
+            <!-- Recovery code acknowledgement (shown after successful PIN creation) -->
+            <template v-if="recoveryCode">
+              <div class="mb-4 flex items-center gap-2">
+                <UIcon
+                  name="i-lucide-shield-check"
+                  class="size-5 shrink-0 text-primary"
                 />
-              </UFormField>
-
-              <p class="text-xs text-muted">
-                If token generation returns unauthorized, switch to "Use existing token" and paste the current token.
+                <h2 class="text-xl font-semibold text-highlighted">
+                  Save your recovery code
+                </h2>
+              </div>
+              <p class="mb-4 text-sm text-muted">
+                If you ever forget your PIN, this code is the only way to regain access.
+                It can only be used once and will not be shown again.
               </p>
 
-              <div
-                v-if="generatedToken"
-                class="rounded-md bg-elevated p-3"
-              >
+              <div class="mb-6 rounded-md bg-elevated p-4 text-center">
                 <p class="mb-1 text-xs text-muted">
-                  Generated token:
+                  Recovery code
                 </p>
-                <code class="break-all text-sm text-highlighted">{{ generatedToken }}</code>
+                <code class="text-xl font-mono font-bold tracking-widest text-highlighted">
+                  {{ recoveryCode }}
+                </code>
               </div>
-            </div>
 
-            <div
-              v-else
-              class="space-y-4"
-            >
-              <UFormField
-                label="Existing Token"
-                description="Paste an existing token to establish a browser session."
-              >
-                <UInput
-                  v-model="pastedToken"
-                  type="password"
-                  placeholder="Paste token"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
+              <UCheckbox
+                v-model="recoveryAcknowledged"
+                label="I have saved this recovery code in a secure place"
+              />
+            </template>
+
+            <!-- PIN entry form -->
+            <template v-else>
+              <h2 class="mb-2 text-xl font-semibold text-highlighted">
+                Set your PIN
+              </h2>
+              <p class="mb-4 text-sm text-muted">
+                Choose a 6-digit PIN to protect access to Cortex.
+              </p>
+
+              <div class="space-y-4">
+                <UFormField label="PIN">
+                  <UInput
+                    v-model="pinValue"
+                    type="password"
+                    inputmode="numeric"
+                    placeholder="••••••"
+                    maxlength="6"
+                    autocomplete="new-password"
+                    class="w-full font-mono tracking-widest"
+                  />
+                </UFormField>
+
+                <UFormField label="Confirm PIN">
+                  <UInput
+                    v-model="pinConfirm"
+                    type="password"
+                    inputmode="numeric"
+                    placeholder="••••••"
+                    maxlength="6"
+                    autocomplete="new-password"
+                    class="w-full font-mono tracking-widest"
+                  />
+                </UFormField>
+
+                <UFormField
+                  label="Session timeout"
+                  description="How long before you need to re-enter your PIN."
+                >
+                  <USelect
+                    v-model="sessionTtlSeconds"
+                    :items="sessionTtlOptions"
+                    value-key="value"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </template>
           </div>
 
           <!-- Step 2: LLM Provider -->
@@ -468,7 +536,7 @@ onMounted(async () => {
               LLM Provider
             </h2>
             <p class="mb-6 text-sm text-muted">
-              Select a provider and model from the supported catalog. Base URLs are managed automatically.
+              Select a provider and model. For Ollama, models are pulled locally via <code>ollama pull</code>.
             </p>
             <div class="space-y-4">
               <UFormField label="Provider">
@@ -479,15 +547,74 @@ onMounted(async () => {
                   class="w-full"
                 />
               </UFormField>
+
+              <!-- Ollama status indicator -->
+              <div
+                v-if="isOllamaSelected"
+                class="flex items-center gap-3"
+              >
+                <UBadge
+                  v-if="ollamaStatus === 'checking'"
+                  label="Checking..."
+                  color="neutral"
+                  variant="subtle"
+                  icon="i-lucide-loader"
+                />
+                <UBadge
+                  v-else-if="ollamaStatus === 'ok'"
+                  label="Ollama running"
+                  color="success"
+                  variant="subtle"
+                  icon="i-lucide-circle-check"
+                />
+                <UBadge
+                  v-else-if="ollamaStatus === 'error'"
+                  label="Ollama unreachable"
+                  color="error"
+                  variant="subtle"
+                  icon="i-lucide-circle-x"
+                />
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-refresh-cw"
+                  :loading="ollamaStatus === 'checking'"
+                  @click="probeOllama"
+                >
+                  Retry
+                </UButton>
+              </div>
+
+              <UAlert
+                v-if="isOllamaSelected && ollamaStatus === 'error'"
+                color="warning"
+                variant="subtle"
+                icon="i-lucide-terminal"
+                title="Ollama is not reachable"
+                :description="ollamaError ?? 'Start Ollama with: ollama serve'"
+              />
+
               <UFormField label="Model">
                 <USelect
                   v-model="providerForm.modelId"
                   :items="modelItems"
                   value-key="value"
+                  :disabled="isOllamaSelected && ollamaStatus !== 'ok'"
                   class="w-full"
                 />
+                <template
+                  v-if="isOllamaSelected && ollamaStatus === 'ok' && modelItems.length === 0"
+                  #description
+                >
+                  <span class="text-warning">No models installed. Run <code>ollama pull &lt;model&gt;</code> first.</span>
+                </template>
               </UFormField>
-              <UFormField label="API Key">
+
+              <UFormField
+                v-if="!isOllamaSelected"
+                label="API Key"
+              >
                 <UInput
                   v-model="providerForm.apiKey"
                   type="password"
@@ -495,9 +622,15 @@ onMounted(async () => {
                   class="w-full"
                 />
               </UFormField>
+
               <p class="text-xs text-muted">
-                Selected provider endpoint:
-                <code>{{ selectedProvider?.baseUrl || 'unavailable' }}</code>
+                <template v-if="isOllamaSelected">
+                  Endpoint: <code>{{ selectedProvider?.baseUrl || 'http://localhost:11434' }}</code>
+                  — set <code>OLLAMA_HOST</code> to override
+                </template>
+                <template v-else>
+                  Selected provider endpoint: <code>{{ selectedProvider?.baseUrl || 'unavailable' }}</code>
+                </template>
               </p>
             </div>
           </div>
@@ -613,6 +746,7 @@ onMounted(async () => {
 
               <UButton
                 :loading="isLoading"
+                :disabled="currentStep === 1 && recoveryCode !== null && !recoveryAcknowledged"
                 trailing
                 type="button"
                 :icon="currentStep === 4 ? 'i-lucide-check' : 'i-lucide-arrow-right'"

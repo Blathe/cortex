@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import { getCookie, setCookie } from 'h3'
+import { createError, getCookie, setCookie } from 'h3'
 import type { H3Event } from 'h3'
 import { safeStringEqual } from './security'
 
@@ -7,20 +7,27 @@ const SESSION_COOKIE_NAME = 'cortex_auth'
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 8
 const MIN_SESSION_TTL_SECONDS = 60
 const MAX_SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
+const SUDO_WINDOW_SECONDS = 2 * 60 * 60 // 2 hours
 
 interface SessionPayload {
-  v: 1
+  v: 2
   iat: number
   exp: number
+  sudoAt?: number
 }
 
-const encodeBase64Url = (value: string): string => {
-  return Buffer.from(value, 'utf8')
+export interface SessionData {
+  iat: number
+  exp: number
+  sudoAt?: number
+}
+
+const encodeBase64Url = (value: string): string =>
+  Buffer.from(value, 'utf8')
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '')
-}
 
 const decodeBase64Url = (value: string): string | null => {
   try {
@@ -34,76 +41,69 @@ const decodeBase64Url = (value: string): string | null => {
   }
 }
 
-const getSessionTtlSeconds = (): number => {
+export const getSessionTtlSeconds = (): number => {
   const raw = Number(process.env.CORTEX_SESSION_TTL_SECONDS)
-  if (!Number.isFinite(raw) || raw <= 0) {
-    return DEFAULT_SESSION_TTL_SECONDS
-  }
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SESSION_TTL_SECONDS
   return Math.min(Math.max(Math.floor(raw), MIN_SESSION_TTL_SECONDS), MAX_SESSION_TTL_SECONDS)
 }
 
-const getSessionSigningSecret = (authToken: string): string => {
-  const base = process.env.CORTEX_SESSION_SECRET?.trim() || 'cortex-session'
-  return `${base}:${authToken}`
+/**
+ * The session signing secret is derived from PIN_PEPPER (set during PIN setup).
+ * When the PIN is reset via recovery code, a new pepper is generated, which
+ * automatically invalidates all existing sessions.
+ */
+const getSessionSigningSecret = (): string => {
+  const pepper = process.env.PIN_PEPPER?.trim()
+  const explicit = process.env.CORTEX_SESSION_SECRET?.trim()
+  return pepper || explicit || 'cortex-session-dev'
 }
 
-const signPayload = (payloadB64: string, authToken: string): string => {
-  return createHmac('sha256', getSessionSigningSecret(authToken))
-    .update(payloadB64)
-    .digest('hex')
-}
+const signPayload = (payloadB64: string): string =>
+  createHmac('sha256', getSessionSigningSecret()).update(payloadB64).digest('hex')
 
 export interface SessionValidationResult {
   valid: boolean
+  data?: SessionData
   reason?: 'missing' | 'malformed' | 'invalid_signature' | 'expired' | 'invalid_payload'
 }
 
 export const createSessionCookieValue = (
-  authToken: string,
   nowMs = Date.now(),
-  ttlSeconds = getSessionTtlSeconds()
+  ttlSeconds = getSessionTtlSeconds(),
+  sudoAt?: number
 ): string => {
   const issuedAtSeconds = Math.floor(nowMs / 1000)
   const payload: SessionPayload = {
-    v: 1,
+    v: 2,
     iat: issuedAtSeconds,
-    exp: issuedAtSeconds + ttlSeconds
+    exp: issuedAtSeconds + ttlSeconds,
+    ...(sudoAt !== undefined ? { sudoAt } : {})
   }
-
   const payloadB64 = encodeBase64Url(JSON.stringify(payload))
-  const signature = signPayload(payloadB64, authToken)
+  const signature = signPayload(payloadB64)
   return `${payloadB64}.${signature}`
 }
 
 export const validateSessionCookieValue = (
   sessionCookieValue: string | undefined | null,
-  authToken: string,
   nowMs = Date.now()
 ): SessionValidationResult => {
-  if (!sessionCookieValue) {
-    return { valid: false, reason: 'missing' }
-  }
+  if (!sessionCookieValue) return { valid: false, reason: 'missing' }
 
   const parts = sessionCookieValue.split('.')
-  if (parts.length !== 2) {
-    return { valid: false, reason: 'malformed' }
-  }
+  if (parts.length !== 2) return { valid: false, reason: 'malformed' }
 
   const payloadB64 = parts[0] || ''
   const signature = parts[1] || ''
-  if (!payloadB64 || !signature) {
-    return { valid: false, reason: 'malformed' }
-  }
+  if (!payloadB64 || !signature) return { valid: false, reason: 'malformed' }
 
-  const expectedSignature = signPayload(payloadB64, authToken)
+  const expectedSignature = signPayload(payloadB64)
   if (!safeStringEqual(signature, expectedSignature)) {
     return { valid: false, reason: 'invalid_signature' }
   }
 
   const decoded = decodeBase64Url(payloadB64)
-  if (!decoded) {
-    return { valid: false, reason: 'invalid_payload' }
-  }
+  if (!decoded) return { valid: false, reason: 'invalid_payload' }
 
   let payload: SessionPayload
   try {
@@ -112,21 +112,26 @@ export const validateSessionCookieValue = (
     return { valid: false, reason: 'invalid_payload' }
   }
 
-  if (payload.v !== 1 || !Number.isInteger(payload.iat) || !Number.isInteger(payload.exp)) {
+  if (payload.v !== 2 || !Number.isInteger(payload.iat) || !Number.isInteger(payload.exp)) {
     return { valid: false, reason: 'invalid_payload' }
   }
 
   const nowSeconds = Math.floor(nowMs / 1000)
-  if (payload.exp <= nowSeconds) {
-    return { valid: false, reason: 'expired' }
-  }
+  if (payload.exp <= nowSeconds) return { valid: false, reason: 'expired' }
 
-  return { valid: true }
+  return {
+    valid: true,
+    data: {
+      iat: payload.iat,
+      exp: payload.exp,
+      sudoAt: payload.sudoAt
+    }
+  }
 }
 
-export const setSessionCookie = (event: H3Event, authToken: string): string => {
+export const setSessionCookie = (event: H3Event, sudoAt?: number): string => {
   const ttlSeconds = getSessionTtlSeconds()
-  const value = createSessionCookieValue(authToken, Date.now(), ttlSeconds)
+  const value = createSessionCookieValue(Date.now(), ttlSeconds, sudoAt)
   setCookie(event, SESSION_COOKIE_NAME, value, {
     httpOnly: true,
     sameSite: 'strict',
@@ -137,7 +142,32 @@ export const setSessionCookie = (event: H3Event, authToken: string): string => {
   return value
 }
 
-export const hasValidSessionCookie = (event: H3Event, authToken: string): boolean => {
+/** Read and validate the session cookie from the current request. */
+export const validateSession = (event: H3Event): SessionValidationResult => {
   const cookie = getCookie(event, SESSION_COOKIE_NAME)
-  return validateSessionCookieValue(cookie, authToken).valid
+  return validateSessionCookieValue(cookie)
 }
+
+/**
+ * Require that the session has a recent sudo (PIN re-auth) timestamp.
+ * Throws 403 with requiresSudo=true if missing or expired.
+ */
+export const requireSudoMode = (event: H3Event): SessionData => {
+  const result = validateSession(event)
+  if (!result.valid || !result.data) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  const { sudoAt } = result.data
+  if (!sudoAt || (nowSeconds - sudoAt) > SUDO_WINDOW_SECONDS) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'PIN confirmation required.',
+      data: { requiresSudo: true }
+    })
+  }
+  return result.data
+}
+
+export const hasValidSessionCookie = (event: H3Event): boolean =>
+  validateSession(event).valid

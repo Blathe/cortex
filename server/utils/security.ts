@@ -21,7 +21,7 @@ interface RateLimitBucket {
 
 const rateLimitBuckets = new Map<string, RateLimitBucket>()
 
-const getClientIp = (event: H3Event): string => {
+export const getClientIp = (event: H3Event): string => {
   const forwarded = getHeader(event, 'x-forwarded-for')
   if (forwarded) {
     const first = forwarded.split(',')[0]?.trim()

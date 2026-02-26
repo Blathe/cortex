@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<ActivePostBody>(event)
 
   if (typeof body.providerId !== 'string' || !isProviderId(body.providerId)) {
-    throw createError({ statusCode: 400, statusMessage: 'providerId must be one of: openai, anthropic, groq.' })
+    throw createError({ statusCode: 400, statusMessage: 'providerId must be one of: openai, anthropic, groq, ollama.' })
   }
 
   if (typeof body.modelId !== 'string' || !body.modelId.trim()) {

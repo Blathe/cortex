@@ -1,32 +1,39 @@
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (to.path === '/onboarding') return
+  // Auth pages never redirect
+  if (to.path === '/onboarding' || to.path === '/login' || to.path === '/recover') return
 
-  // Cache onboarding status in shared state so subsequent navigations are synchronous.
-  // The page itself updates this to `true` immediately after a successful finish,
-  // so the middleware never needs to re-fetch within the same session.
-  const onboarded = useState<boolean | null>('onboarded', () => null)
+  const headers = useRequestHeaders(['cookie'])
+  const data = await $fetch<{
+    onboarded: boolean
+    authenticated: boolean
+    pinConfigured: boolean
+  }>('/api/agent/auth/status', { headers }).catch(() => null)
 
-  if (onboarded.value === null) {
-    const data = await $fetch<{ onboarded: boolean }>('/api/agent/onboarding-status').catch(() => null)
-    if (typeof data?.onboarded === 'boolean') {
-      onboarded.value = data.onboarded
-      if (import.meta.client) {
-        if (data.onboarded) {
-          sessionStorage.setItem('cortex.onboarded', 'true')
-        } else {
-          sessionStorage.removeItem('cortex.onboarded')
-        }
-      }
-    } else if (import.meta.client) {
-      // Fetch failed (typically transient during local dev reload). Use the optimistic
-      // session hint if present; otherwise default to not onboarded.
-      onboarded.value = sessionStorage.getItem('cortex.onboarded') === 'true'
+  // If the API is unreachable, use session storage hint as optimistic fallback (client only)
+  if (!data) {
+    if (import.meta.client) {
+      const hint = sessionStorage.getItem('cortex.onboarded')
+      if (hint !== 'true') return navigateTo('/onboarding')
     } else {
-      onboarded.value = false
+      return navigateTo('/onboarding')
     }
+    return
   }
 
-  if (onboarded.value === false) {
+  if (!data.onboarded || !data.pinConfigured) {
     return navigateTo('/onboarding')
   }
+
+  if (!data.authenticated) {
+    return navigateTo('/login')
+  }
+
+  // Cache the onboarded flag so the app can reference it synchronously
+  if (import.meta.client) {
+    sessionStorage.setItem('cortex.onboarded', 'true')
+  }
+
+  // Keep the shared state in sync so pages can read it without an extra fetch
+  const onboarded = useState<boolean | null>('onboarded')
+  onboarded.value = true
 })

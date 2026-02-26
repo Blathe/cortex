@@ -21,7 +21,7 @@ export interface CortexChatMessage {
   configProposal?: AgentConfigProposal
 }
 
-export type ProviderId = 'openai' | 'anthropic' | 'groq'
+export type ProviderId = 'openai' | 'anthropic' | 'groq' | 'ollama'
 
 export interface ProviderModelEntry {
   id: string
@@ -32,7 +32,7 @@ export interface ProviderCatalogEntry {
   providerId: ProviderId
   label: string
   baseUrl: string
-  authStrategy: 'bearer' | 'x-api-key'
+  authStrategy: 'bearer' | 'x-api-key' | 'none'
   defaultModel: string
   models: ProviderModelEntry[]
 }

@@ -1,47 +1,14 @@
 import { createError, defineEventHandler, readBody } from 'h3'
+import { parseEnvFile, serializeEnvFile, ENV_PATH } from '../../utils/envFile'
 import { readFile, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
 
 interface EnvPostBody {
   vars: { key: string, value: string }[]
 }
 
-const ENV_PATH = resolve(process.cwd(), '.env')
-
 const ALLOWED_KEYS = new Set(['GH_REPO', 'GH_TOKEN'])
 const GH_REPO_RE = /^[^/\s]+\/[^/\s]+$/
 const MAX_VALUE_LENGTH = 1000
-
-export const parseEnvFile = (content: string): Map<string, string> => {
-  const map = new Map<string, string>()
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eqIndex = trimmed.indexOf('=')
-    if (eqIndex === -1) continue
-    const key = trimmed.slice(0, eqIndex).trim()
-    const raw = trimmed.slice(eqIndex + 1).trim()
-    // Strip surrounding double-quotes if present, un-escaping internal sequences
-    if (raw.startsWith('"') && raw.endsWith('"')) {
-      map.set(key, raw.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\'))
-    } else {
-      map.set(key, raw)
-    }
-  }
-  return map
-}
-
-// Returns true when the value must be double-quoted for safe dotenv serialization.
-const needsQuoting = (value: string): boolean =>
-  value.length === 0 || /[^\w./@:+-]/.test(value)
-
-export const serializeValue = (value: string): string => {
-  if (!needsQuoting(value)) return value
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-}
-
-export const serializeEnvFile = (map: Map<string, string>): string =>
-  [...map.entries()].map(([k, v]) => `${k}=${serializeValue(v)}`).join('\n') + '\n'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<EnvPostBody>(event)

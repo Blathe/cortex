@@ -53,7 +53,8 @@ const normalizeKey = (value: string): string => {
 const createEmptyCredentials = (): Record<ProviderId, ProviderCredentials> => ({
   openai: { apiKey: '' },
   anthropic: { apiKey: '' },
-  groq: { apiKey: '' }
+  groq: { apiKey: '' },
+  ollama: { apiKey: '' }
 })
 
 const createEmptyConfig = (): ProvidersConfigV2 => ({
@@ -93,9 +94,14 @@ const ensureActiveIsValid = (config: ProvidersConfigV2): ProvidersConfigV2 => {
   }
 
   if (!isModelAllowed(config.active.providerId, config.active.modelId)) {
-    config.active = {
-      providerId: config.active.providerId,
-      modelId: getDefaultModel(config.active.providerId)
+    const defaultModel = getDefaultModel(config.active.providerId)
+    if (!defaultModel) {
+      config.active = null
+    } else {
+      config.active = {
+        providerId: config.active.providerId,
+        modelId: defaultModel
+      }
     }
   }
 

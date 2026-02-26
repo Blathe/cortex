@@ -2,11 +2,13 @@ import { createEvent } from 'h3'
 import { IncomingMessage, ServerResponse } from 'node:http'
 import { Socket } from 'node:net'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { readToken } from '../../server/utils/authToken'
+import { isPinConfigured } from '../../server/utils/pinAuth'
 import { createSessionCookieValue } from '../../server/utils/authSession'
 import handler from '../../server/middleware/auth'
 
-vi.mock('../../server/utils/authToken')
+vi.mock('../../server/utils/pinAuth', () => ({
+  isPinConfigured: vi.fn()
+}))
 
 const createMockEvent = (path: string, method = 'GET', headers: Record<string, string> = {}) => {
   const req = Object.assign(new IncomingMessage(new Socket()), { url: path, method, headers })
@@ -16,16 +18,12 @@ const createMockEvent = (path: string, method = 'GET', headers: Record<string, s
 
 describe('auth middleware — path allowlist', () => {
   beforeEach(() => {
-    vi.mocked(readToken).mockReturnValue(null)
+    vi.mocked(isPinConfigured).mockReturnValue(false)
+    process.env.PIN_PEPPER = 'test-pepper-for-session-signing'
   })
 
   it('passes non-agent paths through', () => {
     const event = createMockEvent('/api/chat')
-    expect(() => handler(event)).not.toThrow()
-  })
-
-  it('allows /api/agent/auth/generate without credentials', () => {
-    const event = createMockEvent('/api/agent/auth/generate', 'POST')
     expect(() => handler(event)).not.toThrow()
   })
 
@@ -34,50 +32,46 @@ describe('auth middleware — path allowlist', () => {
     expect(() => handler(event)).not.toThrow()
   })
 
+  it('allows /api/agent/auth/setup without credentials', () => {
+    const event = createMockEvent('/api/agent/auth/setup', 'POST')
+    expect(() => handler(event)).not.toThrow()
+  })
+
+  it('allows /api/agent/auth/status without credentials', () => {
+    const event = createMockEvent('/api/agent/auth/status')
+    expect(() => handler(event)).not.toThrow()
+  })
+
   it('allows /api/agent/onboarding-status without credentials', () => {
     const event = createMockEvent('/api/agent/onboarding-status')
     expect(() => handler(event)).not.toThrow()
   })
 
-  it('blocks protected agent paths when no token is configured', () => {
-    vi.mocked(readToken).mockReturnValue(null)
+  it('blocks protected agent paths when PIN is not configured', () => {
+    vi.mocked(isPinConfigured).mockReturnValue(false)
     const event = createMockEvent('/api/agent/config')
     expect(() => handler(event)).toThrowError(expect.objectContaining({ statusCode: 503 }))
   })
 })
 
-describe('auth middleware — token enforcement', () => {
+describe('auth middleware — session enforcement', () => {
   beforeEach(() => {
-    vi.mocked(readToken).mockReturnValue('configured-token')
-    delete process.env.CORTEX_SETUP_SECRET
+    vi.mocked(isPinConfigured).mockReturnValue(true)
+    process.env.PIN_PEPPER = 'test-pepper-for-session-signing'
   })
 
-  it('blocks GET /api/agent/config when no credentials are provided', () => {
+  it('blocks GET /api/agent/config when no session cookie is provided', () => {
     const event = createMockEvent('/api/agent/config', 'GET')
     expect(() => handler(event)).toThrow()
   })
 
-  it('blocks POST /api/agent/env when no credentials are provided', () => {
+  it('blocks POST /api/agent/env when no session cookie is provided', () => {
     const event = createMockEvent('/api/agent/env', 'POST')
     expect(() => handler(event)).toThrow()
   })
 
-  it('blocks /api/agent/providers with wrong Bearer token', () => {
-    const event = createMockEvent('/api/agent/providers', 'GET', {
-      authorization: 'Bearer wrong-token'
-    })
-    expect(() => handler(event)).toThrow()
-  })
-
-  it('allows /api/agent/config with valid Bearer token', () => {
-    const event = createMockEvent('/api/agent/config', 'GET', {
-      authorization: 'Bearer configured-token'
-    })
-    expect(() => handler(event)).not.toThrow()
-  })
-
   it('allows /api/agent/config with valid session cookie', () => {
-    const session = createSessionCookieValue('configured-token')
+    const session = createSessionCookieValue()
     const event = createMockEvent('/api/agent/config', 'GET', {
       cookie: `cortex_auth=${session}`
     })
@@ -85,18 +79,9 @@ describe('auth middleware — token enforcement', () => {
   })
 
   it('blocks /api/agent/config with expired session cookie', () => {
-    const expiredSession = createSessionCookieValue('configured-token', 0, 60)
+    const expiredSession = createSessionCookieValue(0, 60)
     const event = createMockEvent('/api/agent/config', 'GET', {
       cookie: `cortex_auth=${expiredSession}`
-    })
-    expect(() => handler(event)).toThrow()
-  })
-
-  it('blocks /api/agent/config with session signed by a previous token after rotation', () => {
-    const staleSession = createSessionCookieValue('old-token')
-    vi.mocked(readToken).mockReturnValue('configured-token')
-    const event = createMockEvent('/api/agent/config', 'GET', {
-      cookie: `cortex_auth=${staleSession}`
     })
     expect(() => handler(event)).toThrow()
   })
