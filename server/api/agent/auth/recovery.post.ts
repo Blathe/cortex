@@ -10,7 +10,7 @@ import {
   isValidPin,
   verifyRecoveryCode
 } from '../../../utils/pinAuth'
-import { writeEnvVars } from '../../../utils/envFile'
+import { writePinData } from '../../../utils/pinStore'
 import { setSessionCookie } from '../../../utils/authSession'
 import { enforceRateLimit } from '../../../utils/security'
 
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Generate a new pepper — invalidates all existing sessions
-  process.env.PIN_PEPPER = ''
+  writePinData({ pepper: null })
   ensurePinPepper()
 
   const newRecoveryCode = generateRecoveryCode()
@@ -73,10 +73,10 @@ export default defineEventHandler(async (event) => {
     hashRecoveryCode(newRecoveryCode)
   ])
 
-  writeEnvVars({
-    PIN_HASH: newPinHash,
-    PIN_RECOVERY_HASH: newRecoveryHash,
-    PIN_RECOVERY_USED: 'false'
+  writePinData({
+    pinHash: newPinHash,
+    recoveryHash: newRecoveryHash,
+    recoveryUsed: false
   })
 
   setSessionCookie(event)

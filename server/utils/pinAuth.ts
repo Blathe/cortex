@@ -2,7 +2,7 @@ import { createHmac, randomBytes } from 'node:crypto'
 import { hash, verify } from '@node-rs/argon2'
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
-import { writeEnvVars } from './envFile'
+import { readPinData, writePinData } from './pinStore'
 import { getClientIp } from './security'
 
 // Argon2id parameters per OWASP recommendation (minimum: m=19456, t=2, p=1)
@@ -18,16 +18,14 @@ export const RECOVERY_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 // ─── PIN pepper ──────────────────────────────────────────────────────────────
 
-export const getPinPepper = (): string => {
-  return process.env.PIN_PEPPER?.trim() ?? ''
-}
+export const getPinPepper = (): string => readPinData().pepper ?? ''
 
 /** Auto-generates and persists a pepper if not already set. Returns the pepper. */
 export const ensurePinPepper = (): string => {
   const existing = getPinPepper()
   if (existing) return existing
   const pepper = randomBytes(32).toString('hex')
-  writeEnvVars({ PIN_PEPPER: pepper })
+  writePinData({ pepper })
   return pepper
 }
 
@@ -37,7 +35,7 @@ export const ensurePinPepper = (): string => {
  *  stealing the hash file alone is insufficient for offline cracking. */
 export const hashPin = async (pin: string): Promise<string> => {
   const pepper = getPinPepper()
-  if (!pepper) throw new Error('PIN_PEPPER is not set.')
+  if (!pepper) throw new Error('PIN pepper is not set.')
   const peppered = createHmac('sha256', pepper).update(pin).digest('hex')
   return hash(peppered, ARGON2_OPTIONS)
 }
@@ -84,16 +82,13 @@ export const isValidRecoveryCodeInput = (value: unknown): value is string =>
 
 // ─── State reads ─────────────────────────────────────────────────────────────
 
-export const isPinConfigured = (): boolean => Boolean(process.env.PIN_HASH?.trim())
+export const isPinConfigured = (): boolean => Boolean(readPinData().pinHash?.trim())
 
-export const getStoredPinHash = (): string | null =>
-  process.env.PIN_HASH?.trim() || null
+export const getStoredPinHash = (): string | null => readPinData().pinHash || null
 
-export const getStoredRecoveryHash = (): string | null =>
-  process.env.PIN_RECOVERY_HASH?.trim() || null
+export const getStoredRecoveryHash = (): string | null => readPinData().recoveryHash || null
 
-export const isRecoveryCodeUsed = (): boolean =>
-  process.env.PIN_RECOVERY_USED === 'true'
+export const isRecoveryCodeUsed = (): boolean => readPinData().recoveryUsed === true
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 

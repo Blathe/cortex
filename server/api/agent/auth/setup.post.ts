@@ -7,7 +7,7 @@ import {
   isValidPin,
   isValidRecoveryCodeInput
 } from '../../../utils/pinAuth'
-import { writeEnvVars } from '../../../utils/envFile'
+import { writePinData } from '../../../utils/pinStore'
 import { setSessionCookie } from '../../../utils/authSession'
 import { enforceRateLimit } from '../../../utils/security'
 
@@ -59,17 +59,12 @@ export default defineEventHandler(async (event) => {
     hashRecoveryCode(body.recoveryCode)
   ])
 
-  const vars: Record<string, string> = {
-    PIN_HASH: pinHash,
-    PIN_RECOVERY_HASH: recoveryHash,
-    PIN_RECOVERY_USED: 'false'
-  }
-
-  if (body.sessionTtlSeconds !== undefined) {
-    vars.CORTEX_SESSION_TTL_SECONDS = String(body.sessionTtlSeconds)
-  }
-
-  writeEnvVars(vars)
+  writePinData({
+    pinHash,
+    recoveryHash,
+    recoveryUsed: false,
+    ...(body.sessionTtlSeconds !== undefined ? { sessionTtlSeconds: Number(body.sessionTtlSeconds) } : {})
+  })
   setSessionCookie(event)
 
   return { ok: true, sessionEstablished: true }

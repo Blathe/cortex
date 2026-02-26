@@ -12,16 +12,16 @@ export default defineEventHandler((event) => {
   // Minimal onboarding check is intentionally public — returns only a boolean
   if (event.path === '/api/agent/onboarding-status') return
 
-  // Strict secure default: if PIN is not yet configured, deny protected access.
-  if (!isPinConfigured()) {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'Authentication is not initialized. Complete onboarding first.'
-    })
-  }
-
   const session = validateSession(event)
+
   if (!session.valid) {
+    // Distinguish between "not set up yet" and "not logged in"
+    if (!isPinConfigured()) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Authentication is not initialized. Complete onboarding first.'
+      })
+    }
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
 
