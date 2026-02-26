@@ -3,7 +3,6 @@ import type { StepperItem } from '@nuxt/ui'
 import type { ProviderId, ProviderModelEntry } from '~/types/cortex'
 
 const { catalog, loadProviders, setActive, saveCredential, validateConnection, fetchOllamaModels, getProviderById } = useCortexProviders()
-const { saveToken } = useCortexAuth()
 
 const currentStep = ref<number>(0)
 const isDone = ref(false)
@@ -13,11 +12,19 @@ const ONBOARDING_STATE_KEY = 'cortex.onboarding.state.v2'
 const ONBOARDED_CACHE_KEY = 'cortex.onboarded'
 const MAX_STEP = 4
 
-// Step 1 — Authentication
-const tokenMode = ref<'generate' | 'paste'>('generate')
-const setupSecret = ref('')
-const pastedToken = ref('')
-const generatedToken = ref('')
+// Step 1 — PIN setup
+const pinValue = ref('')
+const pinConfirm = ref('')
+const recoveryCode = ref<string | null>(null)
+const recoveryAcknowledged = ref(false)
+const sessionTtlSeconds = ref(60 * 60 * 8) // default 8h
+
+const sessionTtlOptions = [
+  { label: '1 hour', value: 60 * 60 },
+  { label: '8 hours (default)', value: 60 * 60 * 8 },
+  { label: '24 hours', value: 60 * 60 * 24 },
+  { label: '7 days', value: 60 * 60 * 24 * 7 }
+]
 
 // Step 2 — LLM Provider
 const providerForm = reactive({
@@ -46,7 +53,7 @@ const personaForm = reactive({
 
 const steps = ref<StepperItem[]>([
   { title: 'Welcome', description: 'Introduction', icon: 'i-lucide-sparkles' },
-  { title: 'Authentication', description: 'Secure access', icon: 'i-lucide-key-round' },
+  { title: 'PIN Setup', description: 'Secure access', icon: 'i-lucide-shield-check' },
   { title: 'LLM Provider', description: 'Configure AI provider', icon: 'i-lucide-plug' },
   { title: 'GitHub', description: 'Repository credentials', icon: 'i-lucide-github' },
   { title: 'Persona', description: 'Agent behavior', icon: 'i-lucide-bot' }
@@ -67,7 +74,6 @@ const verbosityOptions = [
 
 interface OnboardingDraft {
   currentStep: number
-  tokenMode: 'generate' | 'paste'
   provider: {
     providerId: ProviderId
     modelId: string
@@ -86,7 +92,6 @@ const clampStep = (value: number) => Math.min(Math.max(value, 0), MAX_STEP)
 
 const buildDraft = (): OnboardingDraft => ({
   currentStep: currentStep.value,
-  tokenMode: tokenMode.value,
   provider: {
     providerId: providerForm.providerId,
     modelId: providerForm.modelId
@@ -183,7 +188,6 @@ const restoreDraft = () => {
   try {
     const parsed = JSON.parse(raw) as Partial<OnboardingDraft>
     currentStep.value = clampStep(Number(parsed.currentStep ?? 0))
-    tokenMode.value = parsed.tokenMode === 'paste' ? 'paste' : 'generate'
     if (isProviderId(parsed.provider?.providerId)) {
       providerForm.providerId = parsed.provider.providerId
     }
@@ -212,28 +216,43 @@ const normalizeRestoredStep = async () => {
   }
 }
 
-const authenticateSession = async () => {
-  if (tokenMode.value === 'paste') {
-    const token = pastedToken.value.trim()
-    if (!token) {
-      throw new Error('Paste your existing token to continue.')
-    }
-    await saveToken(token)
-    return
+const setupPin = async () => {
+  const pin = pinValue.value.trim()
+  const confirm = pinConfirm.value.trim()
+
+  if (!/^\d{6}$/.test(pin)) {
+    throw new Error('PIN must be exactly 6 digits.')
   }
 
-  const headers: Record<string, string> = {}
-  const secret = setupSecret.value.trim()
-  if (secret) {
-    headers['x-cortex-setup-secret'] = secret
+  if (pin !== confirm) {
+    throw new Error('PINs do not match.')
   }
 
-  const res = await $fetch<{ token?: string }>('/api/agent/auth/generate', {
+  // Phase 1 — recovery code not yet shown: generate it client-side and pause for acknowledgement.
+  // Nothing is saved to the server yet, so a page refresh at this point is harmless.
+  if (!recoveryCode.value) {
+    const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    const bytes = new Uint8Array(16)
+    crypto.getRandomValues(bytes)
+    recoveryCode.value = Array.from(bytes).map(b => CHARS[b % CHARS.length]!).join('')
+    throw new Error('__recovery_code_shown__')
+  }
+
+  // Phase 2 — recovery code shown but not acknowledged: block advance.
+  if (!recoveryAcknowledged.value) {
+    throw new Error('Please confirm you have saved the recovery code before continuing.')
+  }
+
+  // Phase 3 — acknowledged: atomically save PIN + hashed recovery code on the server.
+  await $fetch('/api/agent/auth/setup', {
     method: 'POST',
-    headers,
-    body: { revealToken: false }
+    body: {
+      pin,
+      confirmPin: confirm,
+      recoveryCode: recoveryCode.value,
+      sessionTtlSeconds: sessionTtlSeconds.value
+    }
   })
-  generatedToken.value = res.token ?? ''
 }
 
 const goNext = async () => {
@@ -241,7 +260,7 @@ const goNext = async () => {
   isLoading.value = true
   try {
     if (currentStep.value === 1) {
-      await authenticateSession()
+      await setupPin()
       await loadProviders()
       applyProviderDefaults()
     } else if (currentStep.value === 2) {
@@ -272,10 +291,10 @@ const goNext = async () => {
     }
   } catch (e) {
     const err = e as { statusCode?: number, statusMessage?: string, message?: string }
-    if (currentStep.value === 1 && err.statusCode === 401) {
-      error.value = 'This server already has a token. Choose "Use existing token", paste it, and continue.'
-    } else if (currentStep.value === 1 && err.statusCode === 403) {
-      error.value = 'Setup secret is required or invalid. Enter CORTEX_SETUP_SECRET and try again.'
+    if (err.message === '__recovery_code_shown__') {
+      // Recovery code was just revealed — stay on step 1, no error
+    } else if (currentStep.value === 1 && err.statusCode === 409) {
+      error.value = 'A PIN is already configured on this server. It may have been set up previously.'
     } else {
       error.value = err.statusMessage ?? err.message ?? 'Something went wrong.'
     }
@@ -398,10 +417,10 @@ onMounted(async () => {
             <ul class="mb-6 space-y-3 text-sm text-default">
               <li class="flex items-center gap-2">
                 <UIcon
-                  name="i-lucide-key-round"
+                  name="i-lucide-shield-check"
                   class="size-4 shrink-0 text-primary"
                 />
-                Authenticating your session
+                Setting up a PIN for secure access
               </li>
               <li class="flex items-center gap-2">
                 <UIcon
@@ -427,80 +446,86 @@ onMounted(async () => {
             </ul>
           </div>
 
-          <!-- Step 1: Authentication -->
+          <!-- Step 1: PIN Setup -->
           <div v-else-if="currentStep === 1">
-            <h2 class="mb-2 text-xl font-semibold text-highlighted">
-              Authentication
-            </h2>
-            <p class="mb-4 text-sm text-muted">
-              Protected setup endpoints require authentication before configuration changes can be saved.
-            </p>
-
-            <div class="mb-4 flex gap-2">
-              <UButton
-                :variant="tokenMode === 'generate' ? 'solid' : 'outline'"
-                color="neutral"
-                @click="tokenMode = 'generate'"
-              >
-                Generate token
-              </UButton>
-              <UButton
-                :variant="tokenMode === 'paste' ? 'solid' : 'outline'"
-                color="neutral"
-                @click="tokenMode = 'paste'"
-              >
-                Use existing token
-              </UButton>
-            </div>
-
-            <div
-              v-if="tokenMode === 'generate'"
-              class="space-y-4"
-            >
-              <UFormField
-                label="Setup Secret"
-                description="If CORTEX_SETUP_SECRET is configured on the server, enter it here."
-                hint="Optional when no setup secret is configured"
-              >
-                <UInput
-                  v-model="setupSecret"
-                  type="password"
-                  placeholder="Paste setup secret"
-                  class="w-full"
+            <!-- Recovery code acknowledgement (shown after successful PIN creation) -->
+            <template v-if="recoveryCode">
+              <div class="mb-4 flex items-center gap-2">
+                <UIcon
+                  name="i-lucide-shield-check"
+                  class="size-5 shrink-0 text-primary"
                 />
-              </UFormField>
-
-              <p class="text-xs text-muted">
-                If token generation returns unauthorized, switch to "Use existing token" and paste the current token.
+                <h2 class="text-xl font-semibold text-highlighted">
+                  Save your recovery code
+                </h2>
+              </div>
+              <p class="mb-4 text-sm text-muted">
+                If you ever forget your PIN, this code is the only way to regain access.
+                It can only be used once and will not be shown again.
               </p>
 
-              <div
-                v-if="generatedToken"
-                class="rounded-md bg-elevated p-3"
-              >
+              <div class="mb-6 rounded-md bg-elevated p-4 text-center">
                 <p class="mb-1 text-xs text-muted">
-                  Generated token:
+                  Recovery code
                 </p>
-                <code class="break-all text-sm text-highlighted">{{ generatedToken }}</code>
+                <code class="text-xl font-mono font-bold tracking-widest text-highlighted">
+                  {{ recoveryCode }}
+                </code>
               </div>
-            </div>
 
-            <div
-              v-else
-              class="space-y-4"
-            >
-              <UFormField
-                label="Existing Token"
-                description="Paste an existing token to establish a browser session."
-              >
-                <UInput
-                  v-model="pastedToken"
-                  type="password"
-                  placeholder="Paste token"
-                  class="w-full"
-                />
-              </UFormField>
-            </div>
+              <UCheckbox
+                v-model="recoveryAcknowledged"
+                label="I have saved this recovery code in a secure place"
+              />
+            </template>
+
+            <!-- PIN entry form -->
+            <template v-else>
+              <h2 class="mb-2 text-xl font-semibold text-highlighted">
+                Set your PIN
+              </h2>
+              <p class="mb-4 text-sm text-muted">
+                Choose a 6-digit PIN to protect access to Cortex.
+              </p>
+
+              <div class="space-y-4">
+                <UFormField label="PIN">
+                  <UInput
+                    v-model="pinValue"
+                    type="password"
+                    inputmode="numeric"
+                    placeholder="••••••"
+                    maxlength="6"
+                    autocomplete="new-password"
+                    class="w-full font-mono tracking-widest"
+                  />
+                </UFormField>
+
+                <UFormField label="Confirm PIN">
+                  <UInput
+                    v-model="pinConfirm"
+                    type="password"
+                    inputmode="numeric"
+                    placeholder="••••••"
+                    maxlength="6"
+                    autocomplete="new-password"
+                    class="w-full font-mono tracking-widest"
+                  />
+                </UFormField>
+
+                <UFormField
+                  label="Session timeout"
+                  description="How long before you need to re-enter your PIN."
+                >
+                  <USelect
+                    v-model="sessionTtlSeconds"
+                    :items="sessionTtlOptions"
+                    value-key="value"
+                    class="w-full"
+                  />
+                </UFormField>
+              </div>
+            </template>
           </div>
 
           <!-- Step 2: LLM Provider -->
@@ -719,6 +744,7 @@ onMounted(async () => {
 
               <UButton
                 :loading="isLoading"
+                :disabled="currentStep === 1 && recoveryCode !== null && !recoveryAcknowledged"
                 trailing
                 type="button"
                 :icon="currentStep === 4 ? 'i-lucide-check' : 'i-lucide-arrow-right'"

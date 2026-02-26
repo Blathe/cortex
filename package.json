@@ -16,6 +16,7 @@
     "dependencies": {
         "@iconify-json/lucide": "^1.2.90",
         "@iconify-json/simple-icons": "^1.2.70",
+        "@node-rs/argon2": "^2.0.2",
         "@nuxt/ui": "^4.4.0",
         "dompurify": "^3.3.1",
         "marked": "^17.0.3",

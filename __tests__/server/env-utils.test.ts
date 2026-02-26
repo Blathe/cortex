@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEnvFile, serializeEnvFile, serializeValue } from '../../server/api/agent/env.post'
+import { parseEnvFile, serializeEnvFile, serializeValue } from '../../server/utils/envFile'
 
 describe('parseEnvFile', () => {
   it('parses simple key=value pairs', () => {

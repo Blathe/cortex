@@ -1,0 +1,72 @@
+import { createError, defineEventHandler, readBody } from 'h3'
+import {
+  clearPinAttempts,
+  enforcePinRateLimit,
+  generateRecoveryCode,
+  getStoredPinHash,
+  hashPin,
+  hashRecoveryCode,
+  isPinConfigured,
+  isValidPin,
+  recordPinFailure,
+  verifyPin
+} from '../../../utils/pinAuth'
+import { writeEnvVars } from '../../../utils/envFile'
+import { requireSudoMode } from '../../../utils/authSession'
+
+interface ChangePinBody {
+  currentPin?: unknown
+  newPin?: unknown
+  confirmNewPin?: unknown
+}
+
+/**
+ * POST /api/agent/auth/change-pin
+ * Change the PIN. Requires an active session with recent sudo confirmation.
+ */
+export default defineEventHandler(async (event) => {
+  enforcePinRateLimit(event)
+  requireSudoMode(event)
+
+  if (!isPinConfigured()) {
+    throw createError({ statusCode: 503, statusMessage: 'PIN is not configured.' })
+  }
+
+  const body = await readBody<ChangePinBody>(event).catch(() => ({}) as ChangePinBody)
+
+  if (!isValidPin(body.currentPin)) {
+    throw createError({ statusCode: 400, statusMessage: 'currentPin must be exactly 6 digits.' })
+  }
+
+  if (!isValidPin(body.newPin)) {
+    throw createError({ statusCode: 400, statusMessage: 'newPin must be exactly 6 digits.' })
+  }
+
+  if (body.newPin !== body.confirmNewPin) {
+    throw createError({ statusCode: 400, statusMessage: 'New PINs do not match.' })
+  }
+
+  const storedHash = getStoredPinHash()!
+  const currentValid = await verifyPin(body.currentPin, storedHash)
+
+  if (!currentValid) {
+    recordPinFailure(event)
+    throw createError({ statusCode: 401, statusMessage: 'Current PIN is incorrect.' })
+  }
+
+  clearPinAttempts(event)
+
+  const newRecoveryCode = generateRecoveryCode()
+  const [newPinHash, newRecoveryHash] = await Promise.all([
+    hashPin(body.newPin),
+    hashRecoveryCode(newRecoveryCode)
+  ])
+
+  writeEnvVars({
+    PIN_HASH: newPinHash,
+    PIN_RECOVERY_HASH: newRecoveryHash,
+    PIN_RECOVERY_USED: 'false'
+  })
+
+  return { ok: true, recoveryCode: newRecoveryCode }
+})

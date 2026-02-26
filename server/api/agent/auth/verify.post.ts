@@ -8,16 +8,23 @@ import {
   recordPinFailure,
   verifyPin
 } from '../../../utils/pinAuth'
-import { setSessionCookie } from '../../../utils/authSession'
+import { setSessionCookie, validateSession } from '../../../utils/authSession'
 
+/**
+ * POST /api/agent/auth/verify
+ * Sudo re-authentication: validates PIN and stamps sudoAt on the current session.
+ * Requires an existing valid session.
+ */
 export default defineEventHandler(async (event) => {
   enforcePinRateLimit(event)
 
+  const session = validateSession(event)
+  if (!session.valid) {
+    throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
+  }
+
   if (!isPinConfigured()) {
-    throw createError({
-      statusCode: 503,
-      statusMessage: 'PIN is not configured. Complete onboarding first.'
-    })
+    throw createError({ statusCode: 503, statusMessage: 'PIN is not configured.' })
   }
 
   const body = await readBody<{ pin?: unknown }>(event).catch(() => ({ pin: undefined }))
@@ -36,7 +43,8 @@ export default defineEventHandler(async (event) => {
   }
 
   clearPinAttempts(event)
-  setSessionCookie(event)
+  const sudoAt = Math.floor(Date.now() / 1000)
+  setSessionCookie(event, sudoAt)
 
-  return { ok: true, sessionEstablished: true }
+  return { ok: true, sudoGranted: true }
 })
