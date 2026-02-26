@@ -2,6 +2,8 @@
 import type { StepperItem } from '@nuxt/ui'
 import type { ProviderId, ProviderModelEntry } from '~/types/cortex'
 
+definePageMeta({ layout: false })
+
 const { catalog, loadProviders, setActive, saveCredential, validateConnection, fetchOllamaModels, getProviderById } = useCortexProviders()
 
 const currentStep = ref<number>(0)
