@@ -2,11 +2,12 @@ export default defineNuxtRouteMiddleware(async (to) => {
   // Auth pages never redirect
   if (to.path === '/onboarding' || to.path === '/login' || to.path === '/recover') return
 
+  const headers = useRequestHeaders(['cookie'])
   const data = await $fetch<{
     onboarded: boolean
     authenticated: boolean
     pinConfigured: boolean
-  }>('/api/agent/auth/status').catch(() => null)
+  }>('/api/agent/auth/status', { headers }).catch(() => null)
 
   // If the API is unreachable, use session storage hint as optimistic fallback (client only)
   if (!data) {
