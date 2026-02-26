@@ -2,15 +2,15 @@ import { createApp, createRouter, toWebHandler } from 'h3'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import handler from '../../server/api/agent/config.get'
 import { isGitAutomationEnabled, readSettings } from '../../server/utils/agentConfig'
-import { readToken } from '../../server/utils/authToken'
+import { isPinConfigured } from '../../server/utils/pinAuth'
 
 vi.mock('../../server/utils/agentConfig', () => ({
   isGitAutomationEnabled: vi.fn(),
   readSettings: vi.fn()
 }))
 
-vi.mock('../../server/utils/authToken', () => ({
-  readToken: vi.fn()
+vi.mock('../../server/utils/pinAuth', () => ({
+  isPinConfigured: vi.fn()
 }))
 
 const makeApp = () => {
@@ -51,31 +51,26 @@ describe('GET /api/agent/config', () => {
   beforeEach(() => {
     vi.mocked(readSettings).mockResolvedValue(baseSettings)
     vi.mocked(isGitAutomationEnabled).mockReturnValue(true)
-    vi.mocked(readToken).mockReturnValue('abcde12345secret')
+    vi.mocked(isPinConfigured).mockReturnValue(true)
   })
 
-  it('returns masked auth token preview without exposing full token', async () => {
+  it('returns auth configured=true when PIN is set', async () => {
     const handle = makeApp()
     const res = await get(handle)
 
     expect(res.status).toBe(200)
     const json = await res.json() as { auth: Record<string, unknown> }
-
     expect(json.auth.configured).toBe(true)
-    expect(json.auth.tokenPreview).toBe('abcde...')
-    expect(String(json.auth.tokenPreview)).not.toContain('12345secret')
   })
 
-  it('returns null token preview when no token is configured', async () => {
-    vi.mocked(readToken).mockReturnValue(null)
+  it('returns auth configured=false when PIN is not configured', async () => {
+    vi.mocked(isPinConfigured).mockReturnValue(false)
 
     const handle = makeApp()
     const res = await get(handle)
 
     expect(res.status).toBe(200)
     const json = await res.json() as { auth: Record<string, unknown> }
-
     expect(json.auth.configured).toBe(false)
-    expect(json.auth.tokenPreview).toBeNull()
   })
 })
