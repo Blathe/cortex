@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto'
 import { createError, getCookie, setCookie } from 'h3'
 import type { H3Event } from 'h3'
 import { safeStringEqual } from './security'
+import { readPinData } from './pinStore'
 
 const SESSION_COOKIE_NAME = 'cortex_auth'
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 8
@@ -42,18 +43,22 @@ const decodeBase64Url = (value: string): string | null => {
 }
 
 export const getSessionTtlSeconds = (): number => {
+  const stored = readPinData().sessionTtlSeconds
+  if (stored && Number.isFinite(stored) && stored > 0) {
+    return Math.min(Math.max(Math.floor(stored), MIN_SESSION_TTL_SECONDS), MAX_SESSION_TTL_SECONDS)
+  }
   const raw = Number(process.env.CORTEX_SESSION_TTL_SECONDS)
   if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_SESSION_TTL_SECONDS
   return Math.min(Math.max(Math.floor(raw), MIN_SESSION_TTL_SECONDS), MAX_SESSION_TTL_SECONDS)
 }
 
 /**
- * The session signing secret is derived from PIN_PEPPER (set during PIN setup).
+ * The session signing secret is the PIN pepper stored in data/pin.json.
  * When the PIN is reset via recovery code, a new pepper is generated, which
  * automatically invalidates all existing sessions.
  */
 const getSessionSigningSecret = (): string => {
-  const pepper = process.env.PIN_PEPPER?.trim()
+  const pepper = readPinData().pepper?.trim()
   const explicit = process.env.CORTEX_SESSION_SECRET?.trim()
   return pepper || explicit || 'cortex-session-dev'
 }

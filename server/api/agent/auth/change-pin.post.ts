@@ -11,7 +11,7 @@ import {
   recordPinFailure,
   verifyPin
 } from '../../../utils/pinAuth'
-import { writeEnvVars } from '../../../utils/envFile'
+import { writePinData } from '../../../utils/pinStore'
 import { requireSudoMode } from '../../../utils/authSession'
 
 interface ChangePinBody {
@@ -62,10 +62,10 @@ export default defineEventHandler(async (event) => {
     hashRecoveryCode(newRecoveryCode)
   ])
 
-  writeEnvVars({
-    PIN_HASH: newPinHash,
-    PIN_RECOVERY_HASH: newRecoveryHash,
-    PIN_RECOVERY_USED: 'false'
+  writePinData({
+    pinHash: newPinHash,
+    recoveryHash: newRecoveryHash,
+    recoveryUsed: false
   })
 
   return { ok: true, recoveryCode: newRecoveryCode }
